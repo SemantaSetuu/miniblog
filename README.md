@@ -505,9 +505,71 @@ public class PostService {
 - `post.id == null` → INSERT → PostgreSQL generates id
 - `post.id != null` → UPDATE the existing row
 
-### Lesson 4 — `PostController`  *(next)*
+### Lesson 4 — `PostController`
 
-### Lesson 5 — Postman Testing  *(coming)*
+```java
+package com.learning.miniblog.controller;
+
+import com.learning.miniblog.entity.Post;
+import com.learning.miniblog.service.PostService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/posts")
+public class PostController {
+
+    private final PostService postService;
+
+    public PostController(PostService postService) {
+        this.postService = postService;
+    }
+
+    @GetMapping
+    public List<Post> getAllPosts() {
+        return postService.getAllPosts();
+    }
+
+    @GetMapping("/{id}")
+    public Post getPostById(@PathVariable Long id) {
+        return postService.getPostById(id);
+    }
+
+    @PostMapping
+    public Post createPost(@RequestBody Post post) {
+        return postService.createPost(post);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deletePost(@PathVariable Long id) {
+        postService.deletePost(id);
+    }
+}
+```
+
+**Annotations used:**
+
+| Annotation | Purpose | Example URL |
+|---|---|---|
+| `@RestController` | Return JSON, not HTML | — |
+| `@RequestMapping("/api/posts")` | Base URL for the class | — |
+| `@GetMapping` | Read all | `GET /api/posts` |
+| `@GetMapping("/{id}")` | Read one | `GET /api/posts/1` |
+| `@PathVariable` | Extract `{id}` from URL | id = 1 |
+| `@PostMapping` | Create | `POST /api/posts` |
+| `@RequestBody` | Read JSON body → Java object | `{ "title": "..." }` |
+| `@DeleteMapping("/{id}")` | Delete | `DELETE /api/posts/1` |
+
+**Key distinctions learned:**
+
+- **HTTP method vs URL:** The method (`GET`, `POST`, `DELETE`) is separate from the URL. The method is not typed in the URL — the browser defaults to GET, Postman lets you pick.
+- **Controller vs Service:** Controller handles HTTP (URL, JSON in/out). Service handles business logic. Controller calls Service — never the Repository directly.
+- **Request vs Response:** Controller reads the request via `@PathVariable` and `@RequestBody`, and writes the response via the return value. Spring/Jackson handle JSON conversion automatically.
+- **Client vs Server:** Server = Spring Boot app. Client = browser/Postman/React. Same server serves many clients.
+- **Tested:** `GET /api/posts` returned `[]` — the first working REST call.
+
+### Lesson 5 — CRUD Testing  *(next)*
 
 ---
 
@@ -559,6 +621,21 @@ A: Keeps the Hibernate session open during view rendering, allowing lazy-loading
 **Q: What does `save()` do — INSERT or UPDATE?**
 A: Both. If the entity's `id` is `null`, it INSERTs. If `id` has a value, it UPDATEs.
 
+**Q: What's the difference between HTTP method and URL?**
+A: The method (`GET`, `POST`, `PUT`, `DELETE`) is the verb — *what* you want to do. The URL is the address — *what* you're acting on. They travel together in the request but are separate. Same URL + different method = different action.
+
+**Q: What's the difference between a Controller and a Service?**
+A: The Controller handles HTTP — reads URLs, JSON body, returns data as JSON. The Service contains business logic. Controllers must call the Service, never the Repository directly.
+
+**Q: What is `@RequestBody`?**
+A: It tells Spring to read the JSON body of the request and convert it into a Java object (using Jackson). Without it, the parameter would be null.
+
+**Q: What is `@PathVariable`?**
+A: It extracts a value from the URL path — e.g., `{id}` in `/api/posts/{id}` — and puts it into the method parameter.
+
+**Q: Difference between client and server?**
+A: The server provides data (Spring Boot app). The client requests data (browser, Postman, React app). The same server can serve many clients.
+
 ---
 
 ## 14. Progress Tracker
@@ -568,8 +645,8 @@ A: Both. If the entity's `id` is `null`, it INSERTs. If `id` has a value, it UPD
 | 1 | Entities | ✅ Done (`Post`) |
 | 1 | Repositories | ✅ Done (`PostRepository`) |
 | 1 | Services | ✅ Done (`PostService`) |
-| 1 | Controllers | ⬜ Next |
-| 1 | CRUD + Postman | ⬜ |
+| 1 | Controllers | ✅ Done (`PostController`) |
+| 1 | CRUD + Postman | ⬜ Next |
 | 2 | PostgreSQL + Relationships | ⬜ |
 | 2 | DTOs + Validation | ⬜ |
 | 2 | Exception Handling | ⬜ |
