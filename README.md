@@ -498,6 +498,17 @@ public class PostService {
     public void deletePost(Long id) {
         postRepository.deleteById(id);
     }
+
+    public Post updatePost(Long id, Post updatedPost) {
+        Post existing = postRepository.findById(id).orElse(null);
+        if (existing == null) {
+            return null;
+        }
+        existing.setTitle(updatedPost.getTitle());
+        existing.setContent(updatedPost.getContent());
+        existing.setAuthor(updatedPost.getAuthor());
+        return postRepository.save(existing);
+    }
 }
 ```
 
@@ -541,6 +552,11 @@ public class PostController {
         return postService.createPost(post);
     }
 
+    @PutMapping("/{id}")
+    public Post updatePost(@PathVariable Long id, @RequestBody Post post) {
+        return postService.updatePost(id, post);
+    }
+
     @DeleteMapping("/{id}")
     public void deletePost(@PathVariable Long id) {
         postService.deletePost(id);
@@ -556,20 +572,93 @@ public class PostController {
 | `@RequestMapping("/api/posts")` | Base URL for the class | — |
 | `@GetMapping` | Read all | `GET /api/posts` |
 | `@GetMapping("/{id}")` | Read one | `GET /api/posts/1` |
-| `@PathVariable` | Extract `{id}` from URL | id = 1 |
 | `@PostMapping` | Create | `POST /api/posts` |
-| `@RequestBody` | Read JSON body → Java object | `{ "title": "..." }` |
+| `@PutMapping("/{id}")` | Update | `PUT /api/posts/1` |
 | `@DeleteMapping("/{id}")` | Delete | `DELETE /api/posts/1` |
+| `@PathVariable` | Extract `{id}` from URL | id = 1 |
+| `@RequestBody` | Read JSON body → Java object | `{ "title": "..." }` |
 
 **Key distinctions learned:**
 
-- **HTTP method vs URL:** The method (`GET`, `POST`, `DELETE`) is separate from the URL. The method is not typed in the URL — the browser defaults to GET, Postman lets you pick.
-- **Controller vs Service:** Controller handles HTTP (URL, JSON in/out). Service handles business logic. Controller calls Service — never the Repository directly.
-- **Request vs Response:** Controller reads the request via `@PathVariable` and `@RequestBody`, and writes the response via the return value. Spring/Jackson handle JSON conversion automatically.
+- **HTTP method vs URL:** The method (`GET`, `POST`, `PUT`, `DELETE`) is separate from the URL. Same URL + different method = different action.
+- **Controller vs Service:** Controller handles HTTP. Service handles business logic. Controller calls Service — never the Repository directly.
+- **Request vs Response:** Controller reads the request via `@PathVariable` and `@RequestBody`, and writes the response via the return value.
 - **Client vs Server:** Server = Spring Boot app. Client = browser/Postman/React. Same server serves many clients.
-- **Tested:** `GET /api/posts` returned `[]` — the first working REST call.
 
-### Lesson 5 — CRUD Testing  *(next)*
+### Lesson 5 — CRUD Testing with cURL
+
+Tested all four CRUD operations against the live server using `curl`.
+
+**Commands used:**
+
+```bash
+# Create
+curl -X POST http://localhost:8080/api/posts -H "Content-Type: application/json" -d '{"title":"First Post","content":"Hello from cURL","author":"Semanta"}'
+
+# Read one
+curl http://localhost:8080/api/posts/1
+
+# Read all
+curl http://localhost:8080/api/posts
+
+# Update
+curl -X PUT http://localhost:8080/api/posts/1 -H "Content-Type: application/json" -d '{"title":"Updated Title","content":"Updated content","author":"Semanta"}'
+
+# Delete
+curl -X DELETE http://localhost:8080/api/posts/1
+```
+
+**Results:**
+
+| Operation | Endpoint | Result |
+|---|---|---|
+| Create | `POST /api/posts` | ✅ Created post with `id=1` |
+| Read one | `GET /api/posts/1` | ✅ Returned post as JSON |
+| Read all | `GET /api/posts` | ✅ Returned array |
+| Update | `PUT /api/posts/1` | ✅ Updated successfully |
+| Delete | `DELETE /api/posts/1` | ✅ Deleted successfully |
+| Verify | `GET /api/posts` | ✅ Returned `[]` |
+
+**Key learnings:**
+
+- `curl` sends HTTP requests from the terminal. The browser can only send GET.
+- `-X POST` sets the method. `-H "Content-Type: application/json"` tells the server the body is JSON. `-d '...'` is the JSON body.
+- `localhost:8080` works inside Codespaces — no need for the public Codespaces URL.
+- Codespaces port forwarding is **Private** by default.
+
+### Lesson 6 — `PUT /api/posts/{id}` (Update)
+
+**How it works:**
+
+1. Fetch existing row by id.
+2. If not found → return `null` (in Week 2 becomes a 404 response).
+3. If found → overwrite fields with new data.
+4. `save(existing)` — because `id` is set, Hibernate runs **UPDATE**.
+
+**Key learnings:**
+
+- No annotation on the service method — only the controller method gets `@PutMapping`.
+- `save()` picks INSERT or UPDATE based on whether `id` is null.
+- `createdAt` unchanged on update (`updatable = false`).
+- `updatedAt` changes on every update (`@UpdateTimestamp`).
+- SQL generated:
+  ```sql
+  UPDATE posts
+  SET title = ?, content = ?, author = ?, updated_at = ?
+  WHERE id = ?;
+  ```
+
+### Lesson 7 — Full CRUD Complete ✅
+
+| Operation | Endpoint | Method |
+|---|---|---|
+| Create | `/api/posts` | `POST` |
+| Read all | `/api/posts` | `GET` |
+| Read one | `/api/posts/{id}` | `GET` |
+| Update | `/api/posts/{id}` | `PUT` |
+| Delete | `/api/posts/{id}` | `DELETE` |
+
+**Week 1 goal achieved — a fully functional CRUD REST API with PostgreSQL.**
 
 ---
 
@@ -622,7 +711,7 @@ A: Keeps the Hibernate session open during view rendering, allowing lazy-loading
 A: Both. If the entity's `id` is `null`, it INSERTs. If `id` has a value, it UPDATEs.
 
 **Q: What's the difference between HTTP method and URL?**
-A: The method (`GET`, `POST`, `PUT`, `DELETE`) is the verb — *what* you want to do. The URL is the address — *what* you're acting on. They travel together in the request but are separate. Same URL + different method = different action.
+A: The method (`GET`, `POST`, `PUT`, `DELETE`) is the verb — *what* you want to do. The URL is the address — *what* you're acting on. Same URL + different method = different action.
 
 **Q: What's the difference between a Controller and a Service?**
 A: The Controller handles HTTP — reads URLs, JSON body, returns data as JSON. The Service contains business logic. Controllers must call the Service, never the Repository directly.
@@ -636,6 +725,21 @@ A: It extracts a value from the URL path — e.g., `{id}` in `/api/posts/{id}` �
 **Q: Difference between client and server?**
 A: The server provides data (Spring Boot app). The client requests data (browser, Postman, React app). The same server can serve many clients.
 
+**Q: Why does `PUT` need `@PathVariable` AND `@RequestBody`?**
+A: `@PathVariable` identifies *which* row to update (from the URL). `@RequestBody` supplies *what* to update it with (from the JSON body).
+
+**Q: Why does `save()` insert on create but update on PUT?**
+A: `save()` checks the entity's `id`. If `id` is `null` → INSERT. If `id` is set → UPDATE. So we must fetch the existing entity first and modify it.
+
+**Q: Why does `createdAt` never change on update?**
+A: Because the field is annotated with `@Column(updatable = false)`. Hibernate excludes it from every UPDATE statement.
+
+**Q: What HTTP status code does the controller return when the post isn't found?**
+A: Currently it returns `200 OK` with a `null` body. In Week 2 we'll replace this with `404 Not Found` and a proper JSON error response.
+
+**Q: What's the difference between PUT and PATCH?**
+A: `PUT` replaces the whole resource (all fields). `PATCH` updates only specific fields. We use PUT — the client must send all fields.
+
 ---
 
 ## 14. Progress Tracker
@@ -646,11 +750,11 @@ A: The server provides data (Spring Boot app). The client requests data (browser
 | 1 | Repositories | ✅ Done (`PostRepository`) |
 | 1 | Services | ✅ Done (`PostService`) |
 | 1 | Controllers | ✅ Done (`PostController`) |
-| 1 | CRUD + Postman | ⬜ Next |
-| 2 | PostgreSQL + Relationships | ⬜ |
-| 2 | DTOs + Validation | ⬜ |
+| 1 | CRUD + cURL Testing | ✅ Done (POST, GET, PUT, DELETE all working) |
+| 2 | DTOs + Validation | ⬜ Next |
 | 2 | Exception Handling | ⬜ |
 | 2 | Pagination + Sorting | ⬜ |
+| 2 | PostgreSQL + Relationships | ⬜ |
 | 3 | Spring Security + JWT | ⬜ |
 | 4 | Docker + Deployment | ⬜ |
 
@@ -664,6 +768,9 @@ A: The server provides data (Spring Boot app). The client requests data (browser
 - Timestamps: `createdAt` (immutable), `updatedAt` (auto-updated)
 - JSON responses: camelCase (Spring default)
 - DB secrets: always via environment variables
+- Controller base path: `/api/...`
+- HTTP verbs: `GET` (read), `POST` (create), `PUT` (update), `DELETE` (remove)
+- Local testing URL: `http://localhost:8080`
 
 ---
 
