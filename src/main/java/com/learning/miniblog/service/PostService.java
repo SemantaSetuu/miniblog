@@ -30,4 +30,14 @@ public class PostService {
     public void deletePost(Long id) {
         postRepository.deleteById(id);
     }
+    public Post updatePost(Long id, Post updatedPost){
+        Post existing = postRepository.findById(id).orElse(null);
+        if(existing == null){
+            return null;
+        }
+        existing.setTitle(updatedPost.getTitle());
+        existing.setContent(updatedPost.getContent());
+        existing.setAuthor(updatedPost.getAuthor());
+        return postRepository.save(existing);
+    }
 }
