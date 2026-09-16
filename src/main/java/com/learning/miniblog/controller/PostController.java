@@ -1,6 +1,7 @@
 package com.learning.miniblog.controller;
 
-import com.learning.miniblog.entity.Post;
+import com.learning.miniblog.dto.PostRequest;
+import com.learning.miniblog.dto.PostResponse;
 import com.learning.miniblog.service.PostService;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,26 +18,27 @@ public class PostController {
     }
 
     @GetMapping
-    public List<Post> getAllPosts() {
+    public List<PostResponse> getAllPosts() {
         return postService.getAllPosts();
     }
 
     @GetMapping("/{id}")
-    public Post getPostById(@PathVariable Long id) {
+    public PostResponse getPostById(@PathVariable Long id) {
         return postService.getPostById(id);
     }
 
     @PostMapping
-    public Post createPost(@RequestBody Post post) {
-        return postService.createPost(post);
+    public PostResponse createPost(@RequestBody PostRequest request) {
+        return postService.createPost(request);
+    }
+
+    @PutMapping("/{id}")
+    public PostResponse updatePost(@PathVariable Long id, @RequestBody PostRequest request) {
+        return postService.updatePost(id, request);
     }
 
     @DeleteMapping("/{id}")
     public void deletePost(@PathVariable Long id) {
         postService.deletePost(id);
-    }
-    @PutMapping("/{id}")
-    public Post updatePost(@PathVariable Long id, @RequestBody Post post) {
-        return postService.updatePost(id, post);
     }
 }
