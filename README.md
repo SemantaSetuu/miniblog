@@ -39,9 +39,10 @@ Build a job-ready Spring Boot REST API using the **modern** stack:
 9. [Project Setup Workflow](#9-project-setup-workflow)
 10. [Request Flow (REST API)](#10-request-flow-rest-api)
 11. [Lessons Log](#11-lessons-log)
-12. [Security Notes](#12-security-notes)
-13. [Interview Q&A Prep](#13-interview-qa-prep)
-14. [Progress Tracker](#14-progress-tracker)
+12. [Confusion Q&A — My Own Questions Answered](#12-confusion-qa--my-own-questions-answered)
+13. [Security Notes](#13-security-notes)
+14. [Interview Q&A Prep](#14-interview-qa-prep)
+15. [Progress Tracker](#15-progress-tracker)
 
 ---
 
@@ -420,6 +421,42 @@ Jackson serializes → JSON
 HTTP 200 OK [ ... ]
 ```
 
+### Full workflow with DTOs (POST example)
+
+```
+Client (curl)
+   │  POST /api/posts + JSON body { id:999, title, content, author }
+   ▼
+Tomcat
+   │  parses HTTP
+   ▼
+DispatcherServlet
+   │  routes to PostController.createPost
+   ▼
+Jackson
+   │  JSON → PostRequest (id=999 dropped — PostRequest has no id field)
+   ▼
+PostController.createPost(request)
+   │
+   ▼
+PostService.createPost(request)
+   │  toEntity(request) → Post entity (id=null)
+   │  postRepository.save(post) → Hibernate INSERT
+   │  PostgreSQL generates id=3, created_at, updated_at
+   │  toResponse(saved) → PostResponse
+   ▼
+PostController returns PostResponse
+   │
+   ▼
+Jackson
+   │  PostResponse → JSON
+   ▼
+Tomcat
+   │  sends response
+   ▼
+curl prints JSON
+```
+
 ---
 
 ## 11. Lessons Log
@@ -463,106 +500,13 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 - Free methods: `save`, `findAll`, `findById`, `deleteById`, `count`, `existsById`
 - Verified in logs: `Found 1 JPA repository interface.`
 
-### Lesson 3 — `PostService`
-
-```java
-package com.learning.miniblog.service;
-
-import com.learning.miniblog.entity.Post;
-import com.learning.miniblog.repository.PostRepository;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-
-@Service
-public class PostService {
-
-    private final PostRepository postRepository;
-
-    public PostService(PostRepository postRepository) {
-        this.postRepository = postRepository;
-    }
-
-    public List<Post> getAllPosts() {
-        return postRepository.findAll();
-    }
-
-    public Post getPostById(Long id) {
-        return postRepository.findById(id).orElse(null);
-    }
-
-    public Post createPost(Post post) {
-        return postRepository.save(post);
-    }
-
-    public void deletePost(Long id) {
-        postRepository.deleteById(id);
-    }
-
-    public Post updatePost(Long id, Post updatedPost) {
-        Post existing = postRepository.findById(id).orElse(null);
-        if (existing == null) {
-            return null;
-        }
-        existing.setTitle(updatedPost.getTitle());
-        existing.setContent(updatedPost.getContent());
-        existing.setAuthor(updatedPost.getAuthor());
-        return postRepository.save(existing);
-    }
-}
-```
+### Lesson 3 — `PostService` (initial version)
 
 **Key idea — `save()` does both INSERT and UPDATE:**
 - `post.id == null` → INSERT → PostgreSQL generates id
 - `post.id != null` → UPDATE the existing row
 
 ### Lesson 4 — `PostController`
-
-```java
-package com.learning.miniblog.controller;
-
-import com.learning.miniblog.entity.Post;
-import com.learning.miniblog.service.PostService;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
-@RestController
-@RequestMapping("/api/posts")
-public class PostController {
-
-    private final PostService postService;
-
-    public PostController(PostService postService) {
-        this.postService = postService;
-    }
-
-    @GetMapping
-    public List<Post> getAllPosts() {
-        return postService.getAllPosts();
-    }
-
-    @GetMapping("/{id}")
-    public Post getPostById(@PathVariable Long id) {
-        return postService.getPostById(id);
-    }
-
-    @PostMapping
-    public Post createPost(@RequestBody Post post) {
-        return postService.createPost(post);
-    }
-
-    @PutMapping("/{id}")
-    public Post updatePost(@PathVariable Long id, @RequestBody Post post) {
-        return postService.updatePost(id, post);
-    }
-
-    @DeleteMapping("/{id}")
-    public void deletePost(@PathVariable Long id) {
-        postService.deletePost(id);
-    }
-}
-```
 
 **Annotations used:**
 
@@ -578,91 +522,386 @@ public class PostController {
 | `@PathVariable` | Extract `{id}` from URL | id = 1 |
 | `@RequestBody` | Read JSON body → Java object | `{ "title": "..." }` |
 
-**Key distinctions learned:**
-
-- **HTTP method vs URL:** The method (`GET`, `POST`, `PUT`, `DELETE`) is separate from the URL. Same URL + different method = different action.
-- **Controller vs Service:** Controller handles HTTP. Service handles business logic. Controller calls Service — never the Repository directly.
-- **Request vs Response:** Controller reads the request via `@PathVariable` and `@RequestBody`, and writes the response via the return value.
-- **Client vs Server:** Server = Spring Boot app. Client = browser/Postman/React. Same server serves many clients.
-
 ### Lesson 5 — CRUD Testing with cURL
 
-Tested all four CRUD operations against the live server using `curl`.
-
-**Commands used:**
-
-```bash
-# Create
-curl -X POST http://localhost:8080/api/posts -H "Content-Type: application/json" -d '{"title":"First Post","content":"Hello from cURL","author":"Semanta"}'
-
-# Read one
-curl http://localhost:8080/api/posts/1
-
-# Read all
-curl http://localhost:8080/api/posts
-
-# Update
-curl -X PUT http://localhost:8080/api/posts/1 -H "Content-Type: application/json" -d '{"title":"Updated Title","content":"Updated content","author":"Semanta"}'
-
-# Delete
-curl -X DELETE http://localhost:8080/api/posts/1
-```
-
-**Results:**
-
-| Operation | Endpoint | Result |
-|---|---|---|
-| Create | `POST /api/posts` | ✅ Created post with `id=1` |
-| Read one | `GET /api/posts/1` | ✅ Returned post as JSON |
-| Read all | `GET /api/posts` | ✅ Returned array |
-| Update | `PUT /api/posts/1` | ✅ Updated successfully |
-| Delete | `DELETE /api/posts/1` | ✅ Deleted successfully |
-| Verify | `GET /api/posts` | ✅ Returned `[]` |
-
-**Key learnings:**
-
-- `curl` sends HTTP requests from the terminal. The browser can only send GET.
-- `-X POST` sets the method. `-H "Content-Type: application/json"` tells the server the body is JSON. `-d '...'` is the JSON body.
-- `localhost:8080` works inside Codespaces — no need for the public Codespaces URL.
-- Codespaces port forwarding is **Private** by default.
+Tested all four CRUD operations. All worked.
 
 ### Lesson 6 — `PUT /api/posts/{id}` (Update)
 
-**How it works:**
-
-1. Fetch existing row by id.
-2. If not found → return `null` (in Week 2 becomes a 404 response).
-3. If found → overwrite fields with new data.
-4. `save(existing)` — because `id` is set, Hibernate runs **UPDATE**.
-
-**Key learnings:**
-
-- No annotation on the service method — only the controller method gets `@PutMapping`.
-- `save()` picks INSERT or UPDATE based on whether `id` is null.
-- `createdAt` unchanged on update (`updatable = false`).
-- `updatedAt` changes on every update (`@UpdateTimestamp`).
-- SQL generated:
-  ```sql
-  UPDATE posts
-  SET title = ?, content = ?, author = ?, updated_at = ?
-  WHERE id = ?;
-  ```
+- Fetch existing row → overwrite fields → `save()` runs UPDATE.
+- `createdAt` unchanged (`updatable = false`).
+- `updatedAt` changes (`@UpdateTimestamp`).
 
 ### Lesson 7 — Full CRUD Complete ✅
 
-| Operation | Endpoint | Method |
-|---|---|---|
-| Create | `/api/posts` | `POST` |
-| Read all | `/api/posts` | `GET` |
-| Read one | `/api/posts/{id}` | `GET` |
-| Update | `/api/posts/{id}` | `PUT` |
-| Delete | `/api/posts/{id}` | `DELETE` |
-
 **Week 1 goal achieved — a fully functional CRUD REST API with PostgreSQL.**
+
+### Lesson 8 (Week 2) — DTOs: `PostRequest` and `PostResponse`
+
+**Why DTOs?**
+
+Without DTOs, the controller accepts and returns the **entity** directly. That means:
+- Client can send `id`, `createdAt`, `updatedAt` — fields they shouldn't control
+- Client sees every field — including future sensitive fields
+- Changing the DB schema would break the API
+
+**The solution:** separate classes for different jobs.
+
+| Class | Direction | Fields |
+|---|---|---|
+| `Post` (entity) | DB ↔ Java | id, title, content, author, createdAt, updatedAt |
+| `PostRequest` (DTO) | Client → Server | title, content, author |
+| `PostResponse` (DTO) | Server → Client | id, title, content, author, createdAt, updatedAt |
+
+**Verification:** Sent `id=999` in the POST body → response showed `id=3` (DB-generated). The DTO dropped `id` because it has no such field.
 
 ---
 
-## 12. Security Notes
+## 12. Confusion Q&A — My Own Questions Answered
+
+This section is a personal revision log of the questions I asked while learning, in the order I asked them.
+
+---
+
+### 🔹 Q: What is a client? What is a server? Am I the client?
+
+**Client** = anything that sends HTTP requests to your server.
+**Server** = your Spring Boot app (running on port 8080) that handles the requests.
+
+In our project, the clients have been:
+
+| Client | How you used it |
+|---|---|
+| **curl** | In the terminal, to send POST/PUT/DELETE |
+| **Browser** | To send GET requests (`localhost:8080/api/posts`) |
+| **Postman** (later) | A GUI tool |
+| **React / mobile** (future) | Real apps that will call your API |
+
+**You are not the client.** You are the human using a client. The client sends the request, receives the response, and shows it to you.
+
+```
+YOU → use a CLIENT (curl/browser) → talk to the SERVER (Spring Boot) → which talks to DATABASE
+```
+
+---
+
+### 🔹 Q: Does the client send both the request AND receive the response?
+
+**Yes.** Same client does both.
+
+```
+Client  ──── REQUEST ────▶  Server
+Client  ◀─── RESPONSE ───  Server
+```
+
+Example with curl:
+- curl **sends** `POST /api/posts` with a JSON body
+- curl **receives** the JSON response and prints it in the terminal
+
+Example with browser:
+- browser **sends** `GET /api/posts`
+- browser **receives** the JSON and displays it
+
+The client is the messenger both ways.
+
+---
+
+### 🔹 Q: What is a DTO and why do we need it?
+
+A **DTO (Data Transfer Object)** is a simple class that holds only the data needed for a specific job — separate from the entity.
+
+**Without DTOs — problems:**
+1. Client can send `id`, `createdAt`, `updatedAt` in the request body. These should be DB-only.
+2. Client sees every entity field in the response — including ones they shouldn't (future passwords, internal notes).
+3. Changing the DB schema would break the API.
+
+**With DTOs:**
+- `PostRequest` — only `title`, `content`, `author`. No `id`. Client can't set it.
+- `PostResponse` — same fields plus `id`, `createdAt`, `updatedAt` for the client to see.
+
+**Analogy:** Think of a form:
+- The **application form** = `PostRequest` (what the client fills in)
+- The **receipt** = `PostResponse` (what you give back)
+- The **filing cabinet record** = `Post` entity (internal)
+
+---
+
+### 🔹 Q: Why does `PostRequest` have no `@Builder` but `PostResponse` does?
+
+Because **who creates the object** differs.
+
+| Class | Created by | Uses builder? |
+|---|---|---|
+| `PostRequest` | Jackson (from JSON) | ❌ Jackson uses `new` + setters |
+| `PostResponse` | Your `toResponse()` method | ✅ Uses `.builder()...build()` |
+| `Post` | Your `toEntity()` and Hibernate | ✅ Uses `.builder()...build()` |
+
+**Rule:** `@Builder` is only useful when **you write** `ClassName.builder()...build()` in your own code. If something else (Jackson, Hibernate) creates the object, you don't need `@Builder`.
+
+---
+
+### 🔹 Q: Why was `@Builder` on `Post` even before I used it?
+
+Convention. Almost every entity has these four Lombok annotations together:
+```java
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+```
+
+You may not use `@Builder` immediately — but as your code grows, you will. When we added `toEntity()`, we finally used it.
+
+**Not a problem to have it early.** No cost, no side effect. Removing it later would be more work.
+
+---
+
+### 🔹 Q: Are `PostService` and `PostController` overriding methods?
+
+**No.** Overriding requires:
+
+1. Class A **extends** Class B
+2. Class A redefines a method from Class B with the **same signature**
+3. Usually marked with `@Override`
+
+Neither `PostService` nor `PostController` extends anything. So nothing is overridden.
+
+The `getAllPosts()` method appears in both classes, but they are **two separate methods with the same name** — the controller calls the service's version.
+
+**Example of real overriding:**
+```java
+class Animal {
+    public void makeSound() { System.out.println("Some sound"); }
+}
+class Dog extends Animal {
+    @Override
+    public void makeSound() { System.out.println("Woof"); }  // ← override
+}
+```
+
+---
+
+### 🔹 Q: Can I name the controller's method differently from the service's?
+
+**Yes.** Method names are convention, not rules.
+
+```java
+@GetMapping
+public List<PostResponse> fetchAllFromServer() {
+    return postService.getAllPosts();   // ← different names, works fine
+}
+```
+
+Spring looks at **annotations**, not method names. Keeping them the same is a **style choice** for readability.
+
+**Rule of thumb:** Same concept → same name. Different job → different name.
+
+---
+
+### 🔹 Q: Why is `getTitle()` needed inside `existing.setTitle(updatedPost.getTitle())`?
+
+Because the setter needs a value to set. That value comes from the getter.
+
+Read it like English:
+> **"Set the title of `existing` to the title of `updatedPost`."**
+
+- `updatedPost.getTitle()` → **reads** the new title from the request
+- `existing.setTitle(...)` → **writes** it onto the DB-bound entity
+
+Without the getter, the setter has nothing to set.
+
+---
+
+### 🔹 Q: In `existing.setTitle(updatedPost.getTitle())`, which runs first?
+
+The **getter**. Java evaluates method arguments before calling the outer method.
+
+Order:
+1. `updatedPost.getTitle()` → returns `"Updated Title"`
+2. `existing.setTitle("Updated Title")` → sets it
+
+Same as writing on a box: you read the label from the notebook **first**, then write it on the box.
+
+---
+
+### 🔹 Q: Where does the title actually get updated?
+
+In `existing.setTitle(...)`. The getter only **reads**. The setter is where the **change** happens.
+
+Then `postRepository.save(existing)` persists the change to the DB (Hibernate runs `UPDATE`).
+
+Flow:
+```
+updatedPost.getTitle()      ← read new value
+     ↓
+existing.setTitle(value)    ← write to entity (in-memory change)
+     ↓
+postRepository.save(...)    ← Hibernate UPDATE (DB change)
+```
+
+---
+
+### 🔹 Q: What does `toResponse()` do again?
+
+It **copies** values from a `Post` entity into a new `PostResponse` DTO using the builder, so the DTO can be sent to the client as JSON.
+
+```java
+private PostResponse toResponse(Post post) {
+    return PostResponse.builder()
+            .id(post.getId())
+            .title(post.getTitle())
+            .content(post.getContent())
+            .author(post.getAuthor())
+            .createdAt(post.getCreatedAt())
+            .updatedAt(post.getUpdatedAt())
+            .build();
+}
+```
+
+**One copy per field.** Simple.
+
+---
+
+### 🔹 Q: Do DTO fields have to match entity field names?
+
+**Not required** for the code to compile or run. But **recommended** because:
+
+1. The JSON field names come from the DTO — rename the DTO field, and the JSON key changes.
+2. If your API is public, renaming is a breaking change for clients.
+3. Readability: developers expect `title` to be `title`, not `headline`.
+
+**Example:**
+| If DTO field is | JSON response shows |
+|---|---|
+| `id` | `"id": 3` |
+| `postId` | `"postId": 3` |
+
+Only rename if you have a specific reason (e.g., `authorName` to avoid clash with an `Author` entity later).
+
+---
+
+### 🔹 Q: What does `.stream().map(this::toResponse).toList()` do?
+
+Four steps, left to right:
+
+| Step | Expression | Type |
+|---|---|---|
+| 1 | `postRepository.findAll()` | `List<Post>` |
+| 2 | `.stream()` | `Stream<Post>` |
+| 3 | `.map(this::toResponse)` | `Stream<PostResponse>` |
+| 4 | `.toList()` | `List<PostResponse>` |
+
+**What each does:**
+- **`findAll()`** — the repository returns entities, never DTOs
+- **`.stream()`** — turns the list into a "conveyor belt" so you can process each item one by one
+- **`.map(this::toResponse)`** — for each `Post` on the belt, run `toResponse(post)` and put the result on a new belt
+- **`.toList()`** — collect the new belt into a `List<PostResponse>`
+
+**`this::toResponse` is shorthand** for `post -> toResponse(post)` — a **method reference**.
+
+---
+
+### 🔹 Q: Is the whole curl command JSON?
+
+**No.** Only the part after `-d` is JSON.
+
+```bash
+curl -X POST http://localhost:8080/api/posts -H "Content-Type: application/json" -d '{"id":999,"title":"..."}'
+```
+
+| Part | Language |
+|---|---|
+| `curl` | Shell command |
+| `-X POST` | Shell option |
+| URL | URL |
+| `-H "..."` | Shell + HTTP header |
+| `-d '{...}'` | **JSON** ✅ |
+
+**Analogy:** You're a courier. The route, the box, the label — all instructions. Only what's **inside** the box is JSON.
+
+---
+
+### 🔹 Q: Does `toResponse()` set values on `PostResponse` variables and return the object?
+
+**Yes. Exactly.**
+
+It:
+1. Creates a new `PostResponse` object (via builder)
+2. Sets each field from the entity
+3. Returns the completed DTO
+
+Then Spring/Jackson converts it to JSON and sends it to the client via Tomcat.
+
+---
+
+### 🔹 Q: Why can't I write `PostResponse postResponse = postRepository.findById(id).orElse(null)`?
+
+Because **types don't match**.
+
+| Expression | Type |
+|---|---|
+| `postRepository.findById(id)` | `Optional<Post>` |
+| `.orElse(null)` | `Post` |
+| Assigned to | `PostResponse` ❌ |
+
+The repository deals only in **entities**, not DTOs. So you must:
+
+```java
+Post post = postRepository.findById(id).orElse(null);   // fetch as entity
+if (post == null) return null;                          // handle not found
+return toResponse(post);                                // convert to DTO
+```
+
+**The repository never returns DTOs.** Only your service converts entities to DTOs.
+
+---
+
+### 🔹 Q: How does the full curl → server → response workflow look end-to-end?
+
+Given this command:
+```bash
+curl -X POST http://localhost:8080/api/posts -H "Content-Type: application/json" -d '{"id":999,"title":"Should Ignore ID","content":"Test","author":"Semanta"}'
+```
+
+Step by step:
+
+1. **Shell runs curl** with method `POST`, URL, header, and JSON body
+2. **curl builds an HTTP request** and connects to `localhost:8080`
+3. **Tomcat** receives the request and passes it to **DispatcherServlet**
+4. **DispatcherServlet** matches `POST /api/posts` to `PostController.createPost`
+5. **Jackson** converts the JSON body → `PostRequest` object. **`id=999` is dropped** because `PostRequest` has no `id` field.
+6. **Controller** calls `postService.createPost(request)`
+7. **Service** calls `toEntity(request)` → creates a `Post` with `id = null`
+8. **Service** calls `postRepository.save(post)`
+9. **Hibernate** generates `INSERT INTO posts (title, content, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
+10. **PostgreSQL** assigns `id = 3` (next in sequence), sets timestamps
+11. **PostgreSQL** returns the generated values to Hibernate
+12. **Hibernate** fills them into the `post` object
+13. **Service** calls `toResponse(saved)` → creates a `PostResponse`
+14. **Controller** returns `PostResponse`
+15. **Jackson** converts it to JSON
+16. **Tomcat** sends the HTTP response
+17. **curl** receives the response and prints it to the terminal
+
+**Result:** You see `{"id":3,"title":"Should Ignore ID",...}` — `999` was silently ignored by the DTO.
+
+---
+
+### 🔹 Q: Do I need to update `PostService` when I add DTOs?
+
+**Yes.** Before DTOs, `PostService` worked directly with `Post`. After DTOs, it must:
+
+- Accept `PostRequest` in `createPost` and `updatePost`
+- Return `PostResponse` in `getAllPosts`, `getPostById`, `createPost`, `updatePost`
+- Add the two conversion helpers `toEntity()` and `toResponse()`
+
+The `PostRepository` stays the same — it still works with entities only.
+
+**The controller also updates** — it now accepts `@RequestBody PostRequest` and returns `PostResponse`.
+
+---
+
+## 13. Security Notes
 
 - Never commit real DB passwords. Use `${ENV_VAR}` placeholders.
 - Never paste real passwords in chat, AI tools, or GitHub.
@@ -672,7 +911,7 @@ curl -X DELETE http://localhost:8080/api/posts/1
 
 ---
 
-## 13. Interview Q&A Prep
+## 14. Interview Q&A Prep
 
 **Q: What's the difference between `@Controller` and `@RestController`?**
 A: `@RestController` = `@Controller` + `@ResponseBody`. It returns the method's value directly as the HTTP body (JSON), instead of resolving a view name.
@@ -711,38 +950,50 @@ A: Keeps the Hibernate session open during view rendering, allowing lazy-loading
 A: Both. If the entity's `id` is `null`, it INSERTs. If `id` has a value, it UPDATEs.
 
 **Q: What's the difference between HTTP method and URL?**
-A: The method (`GET`, `POST`, `PUT`, `DELETE`) is the verb — *what* you want to do. The URL is the address — *what* you're acting on. Same URL + different method = different action.
+A: The method (`GET`, `POST`, `PUT`, `DELETE`) is the verb — *what* you want to do. The URL is the address — *what* you're acting on.
 
 **Q: What's the difference between a Controller and a Service?**
-A: The Controller handles HTTP — reads URLs, JSON body, returns data as JSON. The Service contains business logic. Controllers must call the Service, never the Repository directly.
+A: The Controller handles HTTP. The Service contains business logic. Controllers must call the Service, never the Repository directly.
 
 **Q: What is `@RequestBody`?**
-A: It tells Spring to read the JSON body of the request and convert it into a Java object (using Jackson). Without it, the parameter would be null.
+A: It tells Spring to read the JSON body of the request and convert it into a Java object (using Jackson).
 
 **Q: What is `@PathVariable`?**
 A: It extracts a value from the URL path — e.g., `{id}` in `/api/posts/{id}` — and puts it into the method parameter.
 
 **Q: Difference between client and server?**
-A: The server provides data (Spring Boot app). The client requests data (browser, Postman, React app). The same server can serve many clients.
+A: The server provides data (Spring Boot app). The client requests data (browser, Postman, React). The same server can serve many clients.
 
 **Q: Why does `PUT` need `@PathVariable` AND `@RequestBody`?**
-A: `@PathVariable` identifies *which* row to update (from the URL). `@RequestBody` supplies *what* to update it with (from the JSON body).
+A: `@PathVariable` identifies *which* row. `@RequestBody` supplies *what* to update it with.
 
 **Q: Why does `save()` insert on create but update on PUT?**
-A: `save()` checks the entity's `id`. If `id` is `null` → INSERT. If `id` is set → UPDATE. So we must fetch the existing entity first and modify it.
+A: `save()` checks `id`. If null → INSERT. If set → UPDATE.
 
 **Q: Why does `createdAt` never change on update?**
-A: Because the field is annotated with `@Column(updatable = false)`. Hibernate excludes it from every UPDATE statement.
+A: Because of `@Column(updatable = false)`. Hibernate excludes it from UPDATEs.
 
 **Q: What HTTP status code does the controller return when the post isn't found?**
-A: Currently it returns `200 OK` with a `null` body. In Week 2 we'll replace this with `404 Not Found` and a proper JSON error response.
+A: Currently `200 OK` with a `null` body. In Week 2 we'll change this to `404 Not Found` with a proper JSON error.
 
 **Q: What's the difference between PUT and PATCH?**
-A: `PUT` replaces the whole resource (all fields). `PATCH` updates only specific fields. We use PUT — the client must send all fields.
+A: `PUT` replaces the whole resource (all fields). `PATCH` updates only specific fields.
+
+**Q: What is a DTO and why use one?**
+A: A Data Transfer Object carries data between layers — separate from the entity. Used so the client can't set DB-generated fields (id, timestamps) and can't see fields they shouldn't. Also decouples the API contract from the DB schema.
+
+**Q: Why does `PostRequest` have no `id` field?**
+A: Because the client should never set the id — the DB generates it. Removing `id` means even if the client sends it, Jackson silently drops it.
+
+**Q: Where do the two conversions happen in the service?**
+A: `toEntity(PostRequest)` when receiving data (request → entity). `toResponse(Post)` when returning data (entity → response).
+
+**Q: Why does `.map(this::toResponse)` work?**
+A: Because `this::toResponse` is a method reference — shorthand for `post -> toResponse(post)`. It takes a `Post` and returns a `PostResponse`.
 
 ---
 
-## 14. Progress Tracker
+## 15. Progress Tracker
 
 | Week | Topic | Status |
 |---|---|---|
@@ -751,7 +1002,8 @@ A: `PUT` replaces the whole resource (all fields). `PATCH` updates only specific
 | 1 | Services | ✅ Done (`PostService`) |
 | 1 | Controllers | ✅ Done (`PostController`) |
 | 1 | CRUD + cURL Testing | ✅ Done (POST, GET, PUT, DELETE all working) |
-| 2 | DTOs + Validation | ⬜ Next |
+| 2 | DTOs (`PostRequest`, `PostResponse`) | ✅ Done (id=999 dropped test passed) |
+| 2 | Validation | ⬜ Next |
 | 2 | Exception Handling | ⬜ |
 | 2 | Pagination + Sorting | ⬜ |
 | 2 | PostgreSQL + Relationships | ⬜ |
@@ -771,6 +1023,7 @@ A: `PUT` replaces the whole resource (all fields). `PATCH` updates only specific
 - Controller base path: `/api/...`
 - HTTP verbs: `GET` (read), `POST` (create), `PUT` (update), `DELETE` (remove)
 - Local testing URL: `http://localhost:8080`
+- DTOs live in `dto/` package: `XxxRequest` (client → server), `XxxResponse` (server → client)
 
 ---
 
