@@ -5,6 +5,8 @@ import com.learning.miniblog.dto.PostResponse;
 import com.learning.miniblog.service.PostService;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+
 import java.util.List;
 
 @RestController
@@ -28,12 +30,12 @@ public class PostController {
     }
 
     @PostMapping
-    public PostResponse createPost(@RequestBody PostRequest request) {
+    public PostResponse createPost(@Valid @RequestBody PostRequest request) {
         return postService.createPost(request);
     }
 
     @PutMapping("/{id}")
-    public PostResponse updatePost(@PathVariable Long id, @RequestBody PostRequest request) {
+    public PostResponse updatePost(@PathVariable Long id, @Valid @RequestBody PostRequest request) {
         return postService.updatePost(id, request);
     }
 
