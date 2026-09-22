@@ -218,6 +218,15 @@ public class Post {
 | `@AllArgsConstructor` | Constructor with all fields |
 | `@Builder` | `Post.builder().title("...").build()` |
 
+### Validation annotations (Jakarta Bean Validation)
+
+| Annotation | Meaning | Where used |
+|---|---|---|
+| `@NotBlank` | Field cannot be `null`, `""`, or whitespace | On DTO fields |
+| `@NotNull` | Field cannot be `null` (but empty string is allowed) | On DTO fields |
+| `@Size(max = 150)` | Length constraint | On DTO fields |
+| `@Valid` | Trigger validation on a parameter | On controller method params |
+
 > **Rule:** If you use `@Builder`, you must also add `@NoArgsConstructor` and `@AllArgsConstructor`.
 
 ---
@@ -421,11 +430,11 @@ Jackson serializes → JSON
 HTTP 200 OK [ ... ]
 ```
 
-### Full workflow with DTOs (POST example)
+### Full workflow with DTOs + Validation (POST example)
 
 ```
 Client (curl)
-   │  POST /api/posts + JSON body { id:999, title, content, author }
+   │  POST /api/posts + JSON body { id:999, title:"", content, author }
    ▼
 Tomcat
    │  parses HTTP
@@ -436,25 +445,32 @@ DispatcherServlet
 Jackson
    │  JSON → PostRequest (id=999 dropped — PostRequest has no id field)
    ▼
+@Valid
+   │  runs validation rules on PostRequest
+   │  title = "" → @NotBlank fails → 400 Bad Request
+   │  controller method NOT called
+   ▼
+Response: 400 Bad Request
+```
+
+If validation passes:
+
+```
+@Valid passes
+   │
 PostController.createPost(request)
    │
-   ▼
 PostService.createPost(request)
    │  toEntity(request) → Post entity (id=null)
    │  postRepository.save(post) → Hibernate INSERT
-   │  PostgreSQL generates id=3, created_at, updated_at
+   │  PostgreSQL generates id, created_at, updated_at
    │  toResponse(saved) → PostResponse
    ▼
-PostController returns PostResponse
+Controller returns PostResponse
    │
-   ▼
-Jackson
-   │  PostResponse → JSON
-   ▼
-Tomcat
-   │  sends response
-   ▼
-curl prints JSON
+Jackson → JSON
+   │
+Response: 200 OK
 ```
 
 ---
@@ -553,7 +569,202 @@ Without DTOs, the controller accepts and returns the **entity** directly. That m
 | `PostRequest` (DTO) | Client → Server | title, content, author |
 | `PostResponse` (DTO) | Server → Client | id, title, content, author, createdAt, updatedAt |
 
+**`PostRequest.java`:**
+
+```java
+package com.learning.miniblog.dto;
+
+import lombok.*;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class PostRequest {
+
+    private String title;
+
+    private String content;
+
+    private String author;
+}
+```
+
+**`PostResponse.java`:**
+
+```java
+package com.learning.miniblog.dto;
+
+import lombok.*;
+
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class PostResponse {
+
+    private Long id;
+
+    private String title;
+
+    private String content;
+
+    private String author;
+
+    private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+}
+```
+
+**Conversion methods added to `PostService`:**
+
+```java
+private Post toEntity(PostRequest request) {
+    return Post.builder()
+            .title(request.getTitle())
+            .content(request.getContent())
+            .author(request.getAuthor())
+            .build();
+}
+
+private PostResponse toResponse(Post post) {
+    return PostResponse.builder()
+            .id(post.getId())
+            .title(post.getTitle())
+            .content(post.getContent())
+            .author(post.getAuthor())
+            .createdAt(post.getCreatedAt())
+            .updatedAt(post.getUpdatedAt())
+            .build();
+}
+```
+
+**Updated `PostService` methods** — all accept/return DTOs now:
+
+```java
+public List<PostResponse> getAllPosts() {
+    return postRepository.findAll()
+            .stream()
+            .map(this::toResponse)
+            .toList();
+}
+
+public PostResponse getPostById(Long id) {
+    Post post = postRepository.findById(id).orElse(null);
+    if (post == null) return null;
+    return toResponse(post);
+}
+
+public PostResponse createPost(PostRequest request) {
+    Post post = toEntity(request);
+    Post saved = postRepository.save(post);
+    return toResponse(saved);
+}
+
+public PostResponse updatePost(Long id, PostRequest request) {
+    Post existing = postRepository.findById(id).orElse(null);
+    if (existing == null) return null;
+
+    existing.setTitle(request.getTitle());
+    existing.setContent(request.getContent());
+    existing.setAuthor(request.getAuthor());
+
+    Post saved = postRepository.save(existing);
+    return toResponse(saved);
+}
+```
+
 **Verification:** Sent `id=999` in the POST body → response showed `id=3` (DB-generated). The DTO dropped `id` because it has no such field.
+
+### Lesson 9 (Week 2) — Validation with Jakarta Bean Validation
+
+**Why validation?**
+
+Without it, the API accepts empty strings, nulls, or oversized input. Bad data reaches the database.
+
+**The fix:** annotation-based validation on the DTO, triggered by `@Valid` in the controller.
+
+**`PostRequest.java` with validation:**
+
+```java
+package com.learning.miniblog.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.*;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class PostRequest {
+
+    @NotBlank(message = "Title is required")
+    @Size(max = 150, message = "Title must be at most 150 characters")
+    private String title;
+
+    @NotBlank(message = "Content is required")
+    private String content;
+
+    @NotBlank(message = "Author is required")
+    @Size(max = 100, message = "Author must be at most 100 characters")
+    private String author;
+}
+```
+
+**`PostController` with `@Valid`:**
+
+```java
+@PostMapping
+public PostResponse createPost(@Valid @RequestBody PostRequest request) {
+    return postService.createPost(request);
+}
+
+@PutMapping("/{id}")
+public PostResponse updatePost(@PathVariable Long id, @Valid @RequestBody PostRequest request) {
+    return postService.updatePost(id, request);
+}
+```
+
+**Import added:**
+
+```java
+import jakarta.validation.Valid;
+```
+
+**Annotations used:**
+
+| Annotation | Meaning |
+|---|---|
+| `@NotBlank` | Cannot be `null`, `""`, or whitespace-only |
+| `@Size(max = 150)` | Length cannot exceed 150 characters |
+| `@Valid` | Trigger validation before calling the method |
+
+**How it works:**
+
+1. Client sends JSON
+2. Jackson converts JSON → `PostRequest` object
+3. `@Valid` triggers Spring to run the validation rules on the DTO
+4. If any rule fails → HTTP 400 Bad Request, controller method not called, nothing saved
+5. If all rules pass → controller runs normally
+
+**Verification:**
+
+| Test | Input | Result |
+|---|---|---|
+| A | Empty title (`""`) | 400 Bad Request ✅ |
+| B | Missing title | 400 Bad Request ✅ |
+| C | Valid data | 200 OK with created post ✅ |
+
+**Current limitation:** Spring returns its default ugly 400 error:
+```json
+{"timestamp":"...","status":400,"error":"Bad Request","path":"/api/posts"}
+```
+It doesn't say which field failed. Next lesson: **exception handling** to return clean JSON like:
+```json
+{"title": "Title is required"}
+```
 
 ---
 
@@ -901,6 +1112,95 @@ The `PostRepository` stays the same — it still works with entities only.
 
 ---
 
+### 🔹 Q: How does validation work in the request flow?
+
+**Step by step for a POST with invalid data:**
+
+1. Client sends JSON
+2. Tomcat receives the request
+3. DispatcherServlet routes to `PostController.createPost`
+4. Jackson converts JSON → `PostRequest` object
+5. `@Valid` triggers Spring to run the validation rules on `PostRequest`
+6. If a rule fails → **400 Bad Request** — controller method is **NOT called**
+7. If all rules pass → controller method runs as normal
+
+**Result:** Bad data never reaches the service or the database.
+
+---
+
+### 🔹 Q: Where do validation annotations go — the DTO or the entity?
+
+**On the DTO.**
+
+- `PostRequest` — validation annotations (`@NotBlank`, `@Size`)
+- `Post` (entity) — no validation annotations
+
+**Why:**
+- The DTO is the boundary — validate input at the edge
+- The entity is for the DB — its `@Column(nullable = false)` enforces NOT NULL at the DB level
+- Two layers of protection: DTO validation + DB constraint
+
+**Validation belongs where the client's input first arrives** — the DTO.
+
+---
+
+### 🔹 Q: What's the difference between `@NotBlank` and `@NotNull`?
+
+| Annotation | Rejects |
+|---|---|
+| `@NotNull` | Only `null` |
+| `@NotBlank` | `null`, `""`, and whitespace-only strings |
+
+| Value | `@NotNull` passes? | `@NotBlank` passes? |
+|---|---|---|
+| `"Hello"` | ✅ | ✅ |
+| `""` (empty) | ✅ | ❌ |
+| `"   "` (spaces) | ✅ | ❌ |
+| `null` | ❌ | ❌ |
+
+**Use `@NotBlank` for strings** — it's what you almost always want.
+
+---
+
+### 🔹 Q: What does `@Valid` do?
+
+`@Valid` on a controller method parameter tells Spring:
+
+> **"Before calling this method, run all the validation rules on this parameter."**
+
+- Spring reads the annotations (`@NotBlank`, `@Size`) on the DTO
+- It runs each rule against the data in the DTO object
+- If any rule fails → 400 Bad Request, method not called
+- If all pass → method runs normally
+
+**Without `@Valid`:** The annotations on the DTO are ignored — validation never happens.
+
+---
+
+### 🔹 Q: Are Jakarta annotations different from Spring annotations?
+
+**Yes — they're two different things.**
+
+| Piece | Role |
+|---|---|
+| `jakarta.validation.constraints.*` (`@NotBlank`, `@Size`) | Define the **rules** |
+| `jakarta.validation.Valid` (`@Valid`) | Trigger validation |
+| Spring MVC integration | Runs the validation before controller methods |
+| `spring-boot-starter-validation` (Maven dependency) | Brings in Hibernate Validator — the engine that actually checks |
+
+**Jakarta = the rule book. Spring = the enforcer.**
+
+Both are needed.
+
+**Why "Jakarta" and not "Java"?**
+- Before 2019: `javax.validation.*` (used by Spring Boot 2.x)
+- Spring Boot 3+: `jakarta.validation.*`
+- Oracle kept the `javax` name, so the community (Eclipse Foundation) renamed to `jakarta`
+
+**Rule:** On Spring Boot 3+, always use `jakarta.*`, never `javax.*`.
+
+---
+
 ## 13. Security Notes
 
 - Never commit real DB passwords. Use `${ENV_VAR}` placeholders.
@@ -991,6 +1291,18 @@ A: `toEntity(PostRequest)` when receiving data (request → entity). `toResponse
 **Q: Why does `.map(this::toResponse)` work?**
 A: Because `this::toResponse` is a method reference — shorthand for `post -> toResponse(post)`. It takes a `Post` and returns a `PostResponse`.
 
+**Q: What is Bean Validation?**
+A: A Java standard for declaring validation rules on Java classes using annotations like `@NotBlank`, `@Size`, `@Email`. It's a specification — Hibernate Validator implements it. Spring integrates it via `@Valid`.
+
+**Q: What's the difference between `@Valid` and `@Validated`?**
+A: `@Valid` is the standard Jakarta annotation. `@Validated` is Spring's variant that additionally supports **validation groups** — useful when different scenarios need different rule sets. For simple cases, `@Valid` is enough.
+
+**Q: Why validate on the DTO instead of the entity?**
+A: The DTO is the API boundary — validate input where it arrives. The entity is for the DB — its `@Column(nullable = false)` enforces DB constraints. Two layers of protection.
+
+**Q: What happens to a request if validation fails?**
+A: Spring rejects it with HTTP 400 Bad Request **before** the controller method runs. The service and database are never touched.
+
 ---
 
 ## 15. Progress Tracker
@@ -1003,8 +1315,8 @@ A: Because `this::toResponse` is a method reference — shorthand for `post -> t
 | 1 | Controllers | ✅ Done (`PostController`) |
 | 1 | CRUD + cURL Testing | ✅ Done (POST, GET, PUT, DELETE all working) |
 | 2 | DTOs (`PostRequest`, `PostResponse`) | ✅ Done (id=999 dropped test passed) |
-| 2 | Validation | ⬜ Next |
-| 2 | Exception Handling | ⬜ |
+| 2 | Validation (`@NotBlank`, `@Size`, `@Valid`) | ✅ Done (400 on empty title, 200 on valid) |
+| 2 | Exception Handling | ⬜ Next |
 | 2 | Pagination + Sorting | ⬜ |
 | 2 | PostgreSQL + Relationships | ⬜ |
 | 3 | Spring Security + JWT | ⬜ |
@@ -1024,6 +1336,8 @@ A: Because `this::toResponse` is a method reference — shorthand for `post -> t
 - HTTP verbs: `GET` (read), `POST` (create), `PUT` (update), `DELETE` (remove)
 - Local testing URL: `http://localhost:8080`
 - DTOs live in `dto/` package: `XxxRequest` (client → server), `XxxResponse` (server → client)
+- Validation annotations go on **DTOs** (not entities)
+- Always `jakarta.*`, never `javax.*` (Spring Boot 3+)
 
 ---
 
