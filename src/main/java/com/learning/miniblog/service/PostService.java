@@ -3,6 +3,7 @@ package com.learning.miniblog.service;
 import com.learning.miniblog.dto.PostRequest;
 import com.learning.miniblog.dto.PostResponse;
 import com.learning.miniblog.entity.Post;
+import com.learning.miniblog.exception.ResourceNotFoundException;
 import com.learning.miniblog.repository.PostRepository;
 import org.springframework.stereotype.Service;
 
@@ -25,8 +26,8 @@ public class PostService {
     }
 
     public PostResponse getPostById(Long id) {
-        Post post = postRepository.findById(id).orElse(null);
-        if (post == null) return null;
+        Post post = postRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));
         return toResponse(post);
     }
 
@@ -37,8 +38,7 @@ public class PostService {
     }
 
     public PostResponse updatePost(Long id, PostRequest request) {
-        Post existing = postRepository.findById(id).orElse(null);
-        if (existing == null) return null;
+        Post existing = postRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));
 
         existing.setTitle(request.getTitle());
         existing.setContent(request.getContent());
