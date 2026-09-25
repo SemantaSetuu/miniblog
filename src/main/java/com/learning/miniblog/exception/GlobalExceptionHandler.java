@@ -69,6 +69,16 @@ public class GlobalExceptionHandler {
                 errors.put(fieldError.getField(), fieldError.getDefaultMessage())
         );
 
+        /*
+        List<FieldError> fieldErrors = ex.getBindingResult().getFieldErrors();
+        
+        for(FieldError fieldError : fieldErrors){
+            String fieldName = fieldError.getField();
+            String message = fieldError.getDefaultMessage();
+            errors.put(fieldName, message);
+        }
+        */
+
         // ResponseEntity.status(...) — set the HTTP status code explicitly
         //                            .body(...) — attach a response body (the Map → JSON)
         // Result: HTTP 400 with {"title": "Title is required"}
