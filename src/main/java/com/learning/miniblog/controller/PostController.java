@@ -9,6 +9,9 @@ import jakarta.validation.Valid;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.web.bind.annotation.RequestParam;
+
 @RestController
 @RequestMapping("/api/posts")
 public class PostController {
@@ -20,8 +23,9 @@ public class PostController {
     }
 
     @GetMapping
-    public List<PostResponse> getAllPosts() {
-        return postService.getAllPosts();
+    public Page<PostResponse> getAllPosts(@RequestParam(defaultValue = "0")int page,
+                                          @RequestParam(defaultValue = "5")int size) {
+        return postService.getAllPosts(page,size);
     }
 
     @GetMapping("/{id}")

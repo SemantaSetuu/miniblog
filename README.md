@@ -1637,7 +1637,685 @@ value -> method(value)
 ```
 
 ---
+## Lesson 11 (Week 2) — Pagination Fundamentals
 
+### Definition
+
+Pagination is a technique used to return data in smaller chunks (pages) instead of returning all records at once.
+
+Without pagination:
+
+```java
+postRepository.findAll();
+```
+
+returns:
+
+```text
+All records from the database.
+```
+
+With pagination:
+
+```java
+postRepository.findAll(pageable);
+```
+
+returns:
+
+```text
+Only the requested page of records.
+```
+
+---
+
+## Why Pagination?
+
+Imagine the database contains:
+
+```text
+10 records
+```
+
+Returning everything is fine.
+
+Now imagine:
+
+```text
+100,000 records
+```
+
+Problems:
+
+- Slow response
+- More memory usage
+- Larger network traffic
+- Poor user experience
+
+Pagination solves this problem by returning only a small subset of records.
+
+---
+
+## Page Number
+
+### Definition
+
+The page number identifies which page of data should be returned.
+
+Example:
+
+```java
+page = 0
+```
+
+means:
+
+```text
+First page
+```
+
+Important:
+
+```text
+Spring pagination starts at 0, not 1.
+```
+
+---
+
+### Example
+
+Database:
+
+```text
+Post1
+Post2
+Post3
+Post4
+Post5
+Post6
+```
+
+Page Size:
+
+```text
+2
+```
+
+Results:
+
+```text
+Page 0 -> Post1 Post2
+Page 1 -> Post3 Post4
+Page 2 -> Post5 Post6
+```
+
+---
+
+## Page Size
+
+### Definition
+
+The number of records returned per page.
+
+Example:
+
+```java
+size = 3
+```
+
+means:
+
+```text
+Return 3 records per page.
+```
+
+---
+
+## Pageable
+
+### Definition
+
+`Pageable` is a Spring interface that represents pagination instructions.
+
+Purpose:
+
+```text
+Store information about:
+
+- Page number
+- Page size
+- Sorting information
+```
+
+Think of it as:
+
+```text
+A pagination request form.
+```
+
+---
+
+### Example
+
+```java
+Pageable pageable;
+```
+
+means:
+
+```text
+This variable will hold pagination instructions.
+```
+
+---
+
+## PageRequest
+
+### Definition
+
+`PageRequest` is a Spring class that implements the `Pageable` interface.
+
+Relationship:
+
+```java
+Pageable pageable =
+        PageRequest.of(0,5);
+```
+
+Similar to:
+
+```java
+List<String> names =
+        new ArrayList<>();
+```
+
+---
+
+### Purpose
+
+Creates an actual pagination object.
+
+Example:
+
+```java
+PageRequest.of(0,5);
+```
+
+means:
+
+```text
+Page Number = 0
+Page Size = 5
+```
+
+---
+
+### Syntax
+
+```java
+PageRequest.of(page, size);
+```
+
+Example:
+
+```java
+PageRequest.of(1,3);
+```
+
+means:
+
+```text
+Give me page 1
+with 3 records per page.
+```
+
+---
+
+## Page
+
+### Definition
+
+`Page<T>` is a Spring object that holds:
+
+1. Records
+2. Pagination Metadata
+
+---
+
+### Difference Between List and Page
+
+#### List
+
+```java
+List<Post>
+```
+
+Contains:
+
+```text
+Only records
+```
+
+Example:
+
+```java
+[
+    Post1,
+    Post2,
+    Post3
+]
+```
+
+---
+
+#### Page
+
+```java
+Page<Post>
+```
+
+Contains:
+
+```text
+Records
++
+Metadata
+```
+
+Think:
+
+```java
+{
+    content : [Post1, Post2],
+
+    pageNumber : 0,
+
+    pageSize : 2,
+
+    totalPages : 4,
+
+    totalElements : 8
+}
+```
+
+(Not actual Java syntax)
+
+---
+
+## Important Methods of Page
+
+### Get Records
+
+```java
+page.getContent()
+```
+
+Returns:
+
+```java
+List<Post>
+```
+
+Only the actual records.
+
+---
+
+### Get Current Page Number
+
+```java
+page.getNumber()
+```
+
+Returns:
+
+```text
+Current page number
+```
+
+---
+
+### Get Total Pages
+
+```java
+page.getTotalPages()
+```
+
+Returns:
+
+```text
+Total number of pages
+```
+
+---
+
+### Get Total Records
+
+```java
+page.getTotalElements()
+```
+
+Returns:
+
+```text
+Total records in database
+```
+
+---
+
+## Service Layer Example
+
+### Professional Spring Version
+
+```java
+public Page<PostResponse> getAllPosts(
+        int page,
+        int size){
+
+    Pageable pageable =
+            PageRequest.of(page, size);
+
+    return postRepository.findAll(pageable)
+            .map(this::toResponse);
+}
+```
+
+---
+
+### What Happens Internally?
+
+```text
+Create pagination instructions
+        ↓
+Fetch page from database
+        ↓
+Convert Post → PostResponse
+        ↓
+Preserve pagination metadata
+        ↓
+Return Page<PostResponse>
+```
+
+---
+
+## @RequestParam
+
+### Definition
+
+`@RequestParam` tells Spring to read values from URL query parameters.
+
+Example:
+
+```java
+@RequestParam
+int page
+```
+
+means:
+
+```text
+Read page value from URL.
+```
+
+---
+
+### Example URL
+
+```http
+/api/posts?page=1&size=5
+```
+
+Spring automatically extracts:
+
+```java
+page = 1
+```
+
+```java
+size = 5
+```
+
+and passes them into the controller method.
+
+---
+
+## Controller Example
+
+```java
+@GetMapping
+public Page<PostResponse> getAllPosts(
+
+        @RequestParam(defaultValue = "0")
+        int page,
+
+        @RequestParam(defaultValue = "5")
+        int size
+){
+
+    return postService.getAllPosts(
+            page,
+            size
+    );
+}
+```
+
+---
+
+## defaultValue
+
+### Definition
+
+Used when the client does not provide a value.
+
+Example:
+
+```java
+@RequestParam(defaultValue = "0")
+int page
+```
+
+means:
+
+```text
+If page is missing,
+use page 0.
+```
+
+---
+
+Example:
+
+```java
+@RequestParam(defaultValue = "5")
+int size
+```
+
+means:
+
+```text
+If size is missing,
+use size 5.
+```
+
+---
+
+### Request Without Parameters
+
+```http
+GET /api/posts
+```
+
+Spring automatically uses:
+
+```java
+page = 0
+size = 5
+```
+
+---
+
+### Request With Parameters
+
+```http
+GET /api/posts?page=2&size=3
+```
+
+Spring automatically uses:
+
+```java
+page = 2
+size = 3
+```
+
+---
+
+## Full Request Flow
+
+```text
+Client Request
+GET /api/posts?page=1&size=2
+        ↓
+@RequestParam extracts values
+        ↓
+page = 1
+size = 2
+        ↓
+Controller
+        ↓
+Service
+        ↓
+PageRequest.of(1,2)
+        ↓
+Repository
+        ↓
+Database
+        ↓
+Page<Post>
+        ↓
+Convert Post → PostResponse
+        ↓
+Page<PostResponse>
+        ↓
+JSON Response
+```
+
+---
+
+## Key Concepts Learned
+
+✅ Pagination
+
+✅ Page Number
+
+✅ Page Size
+
+✅ Pageable
+
+✅ PageRequest
+
+✅ Page
+
+✅ Page Metadata
+
+✅ getContent()
+
+✅ @RequestParam
+
+✅ defaultValue
+
+✅ URL Query Parameters
+
+---
+
+## Interview Questions
+
+### Q: What is Pagination?
+
+Pagination is the process of dividing large datasets into smaller pages and returning only a subset of records.
+
+---
+
+### Q: What is Pageable?
+
+`Pageable` is a Spring interface that stores pagination instructions such as page number, page size, and sorting information.
+
+---
+
+### Q: What is PageRequest?
+
+`PageRequest` is a class that implements `Pageable` and is used to create pagination instructions.
+
+Example:
+
+```java
+PageRequest.of(0,5);
+```
+
+---
+
+### Q: What is Page?
+
+`Page<T>` is a Spring object that contains both:
+
+```text
+Records
++
+Pagination metadata
+```
+
+such as:
+
+- Total pages
+- Total elements
+- Current page
+- Page size
+
+---
+
+### Q: Difference Between List and Page?
+
+`List<T>` contains only records.
+
+`Page<T>` contains records plus pagination metadata.
+
+---
+
+### Q: What does @RequestParam do?
+
+It extracts values from URL query parameters and injects them into controller method parameters.
+
+Example:
+
+```http
+GET /api/posts?page=1&size=5
+```
+
+↓
+
+```java
+page = 1
+size = 5
+```
+
+---
+
+### Q: What does defaultValue do?
+
+Provides a fallback value when the client does not supply a query parameter.
+
+Example:
+
+```java
+@RequestParam(defaultValue = "0")
+int page
+```
+
+If page is missing:
+
+```java
+page = 0
+```
+
+--- 
 Understanding the expanded Java version is more important than memorizing the shortcut syntax.
 ## 14. Security Notes
 
