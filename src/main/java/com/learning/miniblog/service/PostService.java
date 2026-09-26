@@ -5,9 +5,12 @@ import com.learning.miniblog.dto.PostResponse;
 import com.learning.miniblog.entity.Post;
 import com.learning.miniblog.exception.ResourceNotFoundException;
 import com.learning.miniblog.repository.PostRepository;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+//pagination
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 
 @Service
 public class PostService {
@@ -18,11 +21,31 @@ public class PostService {
         this.postRepository = postRepository;
     }
 
+    /* having all posts in a list
     public List<PostResponse> getAllPosts() {
         return postRepository.findAll()
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+    /* this is the old style writing.
+    public List<PostResponse> getAllPosts(){
+        List<Post> postListAll = postRepository.findAll();// Get all Post entities from database
+        List<PostResponse> posts = new ArrayList<>(); // Create empty list for DTO responses
+
+        for(Post post : postListAll){
+            PostResponse response = toResponse(post);// Convert every Post entity to PostResponse DTO
+            posts.add(response);
+        }
+        return posts;
+    }*/
+    //*/
+
+    public Page<PostResponse> getAllPosts(int page, int size){
+        Pageable pageable = PageRequest.of(page,size);
+
+        return postRepository.findAll(pageable).map(post -> toResponse(post));///.map(this::toResponse)
+        //can not use for loop on page as page though can be considered as kind of a list but posts will be hold on anotger block called content. doing this map() function can convert regular post to DTO one which is done by spring.
     }
 
     public PostResponse getPostById(Long id) {
