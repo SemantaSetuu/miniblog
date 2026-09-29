@@ -2420,7 +2420,737 @@ A: The DTO is the API boundary — validate input where it arrives. The entity i
 A: Spring rejects it with HTTP 400 Bad Request **before** the controller method runs. The service and database are never touched.
 
 ---
+## Lesson 12 (Week 2) — Basic Sorting
 
+### Definition
+
+Sorting is the process of arranging database records in a specified order before returning them to the client.
+
+Common sorting orders include:
+
+```text
+A → Z
+Z → A
+
+1 → 100
+100 → 1
+
+Oldest → Newest
+Newest → Oldest
+```
+
+---
+
+### Why Sorting Is Needed
+
+Without explicit sorting:
+
+```java
+postRepository.findAll(pageable);
+```
+
+the database is not being asked to return records in a specific order.
+
+Sorting allows the application to control the order of the returned posts.
+
+Posts can be sorted by fields such as:
+
+- `title`
+- `author`
+- `id`
+- `createdAt`
+- `updatedAt`
+
+---
+
+## The `Sort` Class
+
+### Definition
+
+`Sort` is a Spring Data class used to create sorting instructions.
+
+Import:
+
+```java
+import org.springframework.data.domain.Sort;
+```
+
+Think of a `Sort` object as instructions describing:
+
+```text
+1. Which field should be used for sorting?
+2. Should the order be ascending or descending?
+```
+
+---
+
+## Sorting by Title
+
+### Ascending Order
+
+```java
+Sort.by("title");
+```
+
+The default direction of `Sort.by(...)` is ascending.
+
+The following code is equivalent:
+
+```java
+Sort.by("title").ascending();
+```
+
+Meaning:
+
+```text
+Sort post titles from A to Z.
+```
+
+Example:
+
+```text
+AWS
+Docker
+Hibernate
+Java
+Spring
+```
+
+---
+
+### Descending Order
+
+```java
+Sort.by("title").descending();
+```
+
+Meaning:
+
+```text
+Sort post titles from Z to A.
+```
+
+Example:
+
+```text
+Spring
+Java
+Hibernate
+Docker
+AWS
+```
+
+---
+
+## Adding Sorting to `PageRequest`
+
+### Pagination Without Sorting
+
+```java
+Pageable pageable =
+        PageRequest.of(page, size);
+```
+
+This contains:
+
+```text
+Page number
++
+Page size
+```
+
+---
+
+### Pagination With Sorting
+
+```java
+Pageable pageable =
+        PageRequest.of(
+                page,
+                size,
+                Sort.by("title")
+        );
+```
+
+This contains:
+
+```text
+Page number
++
+Page size
++
+Sort field
++
+Sort direction
+```
+
+Mental visualization:
+
+```java
+{
+    page: page,
+    size: size,
+    sortBy: "title",
+    direction: "ascending"
+}
+```
+
+> This is only a mental visualization. It is not actual Java syntax.
+
+---
+
+## Updated `PostService` Method
+
+```java
+public Page<PostResponse> getAllPosts(
+        int page,
+        int size
+) {
+
+    Pageable pageable =
+            PageRequest.of(
+                    page,
+                    size,
+                    Sort.by("title")
+            );
+
+    return postRepository.findAll(pageable)
+            .map(this::toResponse);
+}
+```
+
+---
+
+## Line-by-Line Explanation
+
+### Method Return Type
+
+```java
+public Page<PostResponse> getAllPosts(
+        int page,
+        int size
+)
+```
+
+The method returns:
+
+```java
+Page<PostResponse>
+```
+
+This means the response contains:
+
+- A page of `PostResponse` DTOs
+- Current page number
+- Page size
+- Total number of pages
+- Total number of database records
+
+---
+
+### Create Pagination and Sorting Instructions
+
+```java
+Pageable pageable =
+        PageRequest.of(
+                page,
+                size,
+                Sort.by("title")
+        );
+```
+
+This creates a `PageRequest` object containing the instructions:
+
+```text
+Which page should be returned?
+How many posts should the page contain?
+Which field should be used to sort the posts?
+Which sorting direction should be used?
+```
+
+Because no direction was explicitly provided, the direction is ascending.
+
+---
+
+### Fetch the Sorted Page
+
+```java
+postRepository.findAll(pageable)
+```
+
+The repository receives the `Pageable` instructions and returns:
+
+```java
+Page<Post>
+```
+
+The result contains:
+
+```text
+Post entities
++
+Pagination metadata
+```
+
+---
+
+### Convert Entity Page to DTO Page
+
+```java
+.map(this::toResponse)
+```
+
+The method reference:
+
+```java
+this::toResponse
+```
+
+is equivalent to:
+
+```java
+post -> toResponse(post)
+```
+
+For every `Post` entity in the page, Spring calls:
+
+```java
+toResponse(post);
+```
+
+This converts:
+
+```java
+Page<Post>
+```
+
+into:
+
+```java
+Page<PostResponse>
+```
+
+The pagination metadata is preserved.
+
+---
+
+## Why We Use `Page.map()`
+
+A `Page` contains more than a collection of records.
+
+It contains:
+
+```text
+Content
++
+Current page
++
+Page size
++
+Total pages
++
+Total elements
+```
+
+A normal `for` loop can convert the content:
+
+```java
+Post
+```
+
+into:
+
+```java
+PostResponse
+```
+
+However, the loop does not automatically create a new `Page<PostResponse>` or preserve the pagination metadata.
+
+That is why this is preferred:
+
+```java
+Page<PostResponse> responsePage =
+        postPage.map(post -> toResponse(post));
+```
+
+or:
+
+```java
+Page<PostResponse> responsePage =
+        postPage.map(this::toResponse);
+```
+
+### Mental Meaning
+
+```text
+Take every Post from the page
+        ↓
+Convert it into PostResponse
+        ↓
+Keep the same page number
+        ↓
+Keep the same page size
+        ↓
+Keep total pages
+        ↓
+Keep total elements
+        ↓
+Return Page<PostResponse>
+```
+
+---
+
+## Complete Request Flow
+
+```text
+Client sends GET request
+        ↓
+Controller receives page and size
+        ↓
+Controller calls PostService
+        ↓
+PageRequest creates pagination instructions
+        ↓
+Sort.by("title") adds sorting instructions
+        ↓
+Repository receives Pageable
+        ↓
+Database sorts posts by title
+        ↓
+Database returns the requested page
+        ↓
+Hibernate maps database rows to Page<Post>
+        ↓
+Page.map(...) converts Post to PostResponse
+        ↓
+Service returns Page<PostResponse>
+        ↓
+Jackson converts the response body to JSON
+        ↓
+Client receives sorted and paginated posts
+```
+
+---
+
+## Controller Code
+
+The controller continues to receive `page` and `size` from the URL:
+
+```java
+@GetMapping
+public Page<PostResponse> getAllPosts(
+
+        @RequestParam(defaultValue = "0")
+        int page,
+
+        @RequestParam(defaultValue = "5")
+        int size
+) {
+
+    return postService.getAllPosts(
+            page,
+            size
+    );
+}
+```
+
+No controller change was required when basic sorting was added.
+
+This is because sorting is currently fixed inside the service:
+
+```java
+Sort.by("title")
+```
+
+---
+
+## Client-Controlled Values
+
+The client controls:
+
+```text
+page
+size
+```
+
+through URL query parameters.
+
+Example:
+
+```http
+GET /api/posts?page=0&size=10
+```
+
+Spring extracts:
+
+```java
+page = 0;
+size = 10;
+```
+
+---
+
+## Service-Controlled Values
+
+The service currently controls:
+
+```text
+Sort field = title
+Sort direction = ascending
+```
+
+because these instructions are written directly inside `PostService`:
+
+```java
+Sort.by("title")
+```
+
+Dynamic sorting, where the client selects the field and direction, is an optional future improvement.
+
+---
+
+## Testing With cURL
+
+### First Page With Up to 10 Posts
+
+```bash
+curl "http://localhost:8080/api/posts?page=0&size=10"
+```
+
+The response should contain posts sorted by title in ascending order.
+
+---
+
+### First Page With Two Posts
+
+```bash
+curl "http://localhost:8080/api/posts?page=0&size=2"
+```
+
+---
+
+### Second Page With Two Posts
+
+```bash
+curl "http://localhost:8080/api/posts?page=1&size=2"
+```
+
+The database sorts the complete result by title first and then returns the requested page.
+
+Mental flow:
+
+```text
+Sort all matching posts
+        ↓
+Divide sorted results into pages
+        ↓
+Return requested page
+```
+
+---
+
+## Ascending vs Descending
+
+### Ascending
+
+```java
+Sort.by("title");
+```
+
+or:
+
+```java
+Sort.by("title").ascending();
+```
+
+Examples:
+
+```text
+A → Z
+Smallest → Largest
+Oldest → Newest
+```
+
+---
+
+### Descending
+
+```java
+Sort.by("title").descending();
+```
+
+Examples:
+
+```text
+Z → A
+Largest → Smallest
+Newest → Oldest
+```
+
+---
+
+## Key Concepts Learned
+
+- Sorting arranges records before they are returned.
+- `Sort` is provided by Spring Data.
+- `Sort.by("title")` sorts by the `title` property.
+- Ascending is the default sorting direction.
+- `.ascending()` explicitly requests ascending order.
+- `.descending()` requests descending order.
+- `PageRequest.of(page, size, sort)` combines pagination and sorting.
+- Fixed sorting currently requires only a service-layer change.
+- `Page.map(...)` converts entity content to DTO content.
+- `Page.map(...)` preserves pagination metadata.
+- The controller would change only if the client were allowed to select the sort field or direction.
+
+---
+
+## Sorting Interview Questions
+
+### Q: What is sorting in a REST API?
+
+Sorting is the process of arranging returned records according to a selected field and direction.
+
+---
+
+### Q: What is the Spring Data `Sort` class?
+
+`Sort` is a Spring Data class used to define which field and direction should be used to order query results.
+
+---
+
+### Q: How do you sort posts by title in ascending order?
+
+```java
+Sort.by("title");
+```
+
+or:
+
+```java
+Sort.by("title").ascending();
+```
+
+---
+
+### Q: How do you sort posts by title in descending order?
+
+```java
+Sort.by("title").descending();
+```
+
+---
+
+### Q: How do pagination and sorting work together?
+
+They are combined when creating a `PageRequest`:
+
+```java
+Pageable pageable =
+        PageRequest.of(
+                page,
+                size,
+                Sort.by("title")
+        );
+```
+
+The repository uses the `Pageable` object to return the requested page in the requested order.
+
+---
+
+### Q: Did the controller need to change when fixed sorting was added?
+
+No.
+
+The controller already sends `page` and `size` to the service. The fixed sorting instruction is defined inside the service:
+
+```java
+Sort.by("title")
+```
+
+The controller would need new parameters only if the client were allowed to select the sort field or direction.
+
+---
+
+### Q: Why is the sort field written as `"title"`?
+
+`"title"` refers to the `title` property of the `Post` entity.
+
+```java
+Sort.by("title")
+```
+
+tells Spring Data to order posts using that mapped property.
+
+---
+
+### Q: Why use `Page.map()` instead of a normal `for` loop?
+
+A normal loop can convert the page content, but it does not automatically preserve pagination metadata.
+
+`Page.map()` converts every content item while keeping:
+
+- Current page
+- Page size
+- Total pages
+- Total elements
+
+---
+
+## Add This Question to the Main Interview Q&A Section
+
+### Q: What is the difference between `Pageable` and `Page`?
+
+`Pageable` contains instructions for requesting data:
+
+- Page number
+- Page size
+- Sorting instructions
+
+`Page<T>` contains the result returned from the database:
+
+- Page content
+- Current page number
+- Page size
+- Total pages
+- Total elements
+
+Example:
+
+```java
+Pageable pageable =
+        PageRequest.of(
+                0,
+                5,
+                Sort.by("title")
+        );
+
+Page<Post> postPage =
+        postRepository.findAll(pageable);
+```
+
+Mental model:
+
+```text
+Pageable = request instructions
+
+Page = database result plus metadata
+```
+
+---
+
+## Updated Week 2 Status
+
+```text
+DTOs                    ✅ Done
+Validation              ✅ Done
+Exception Handling      ✅ Done
+Optional Fundamentals   ✅ Done
+Pagination              ✅ Done
+Basic Sorting           ✅ Done
+Dynamic Sorting         ⬜ Optional
+JPA Relationships       ⬜ Next
+```
 ## 16. Progress Tracker
 
 | Week | Topic | Status |
@@ -2429,14 +3159,17 @@ A: Spring rejects it with HTTP 400 Bad Request **before** the controller method 
 | 1 | Repositories | ✅ Done (`PostRepository`) |
 | 1 | Services | ✅ Done (`PostService`) |
 | 1 | Controllers | ✅ Done (`PostController`) |
-| 1 | CRUD + cURL Testing | ✅ Done (POST, GET, PUT, DELETE all working) |
-| 2 | DTOs (`PostRequest`, `PostResponse`) | ✅ Done (id=999 dropped test passed) |
-| 2 | Validation (`@NotBlank`, `@Size`, `@Valid`) | ✅ Done (400 on empty title, 200 on valid) |
-| 2 | Exception Handling | ✅ Done|
-| 2 | Pagination + Sorting | ⬜ Next|
-| 2 | PostgreSQL + Relationships | ⬜ |
+| 1 | CRUD + cURL Testing | ✅ Done |
+| 2 | DTOs (`PostRequest`, `PostResponse`) | ✅ Done |
+| 2 | Validation (`@NotBlank`, `@Size`, `@Valid`) | ✅ Done |
+| 2 | Exception Handling | ✅ Done |
+| 2 | Pagination | ✅ Done |
+| 2 | Basic Sorting | ✅ Done (`Sort.by("title")`) |
+| 2 | Dynamic Sorting | ⬜ Optional improvement |
+| 2 | PostgreSQL + JPA Relationships | ⬜ Next |
 | 3 | Spring Security + JWT | ⬜ |
 | 4 | Docker + Deployment | ⬜ |
+
 
 ---
 
