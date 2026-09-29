@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 //pagination
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.PageRequest;
 
 @Service
@@ -42,7 +43,7 @@ public class PostService {
     //*/
 
     public Page<PostResponse> getAllPosts(int page, int size){
-        Pageable pageable = PageRequest.of(page,size);
+        Pageable pageable = PageRequest.of(page,size, Sort.by("title").ascending());//can sort basis on the properties or variable given on @Entity Post class
 
         return postRepository.findAll(pageable).map(post -> toResponse(post));///.map(this::toResponse)
         //can not use for loop on page as page though can be considered as kind of a list but posts will be hold on anotger block called content. doing this map() function can convert regular post to DTO one which is done by spring.
