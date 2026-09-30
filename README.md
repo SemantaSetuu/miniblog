@@ -3317,6 +3317,1275 @@ and the foreign key relationship automatically.
 
 ---
 
+## Lesson 14 (Week 2) — Lazy vs Eager Loading
+
+### Definition
+
+Lazy and eager loading determine **when Hibernate loads related entities from the database**.
+
+In the MiniBlog relationship:
+
+```text
+Post
+ ├── Comment 1
+ ├── Comment 2
+ └── Comment 3
+```
+
+When Hibernate loads a `Post`, it must decide:
+
+```text
+Should it load only the Post?
+
+or
+
+Should it load the Post and all its Comments immediately?
+```
+
+This behaviour is controlled using:
+
+```java
+FetchType.LAZY
+```
+
+and:
+
+```java
+FetchType.EAGER
+```
+
+---
+
+## Why Fetch Types Are Needed
+
+Suppose the application requests a post:
+
+```java
+Post post = postRepository.findById(1L)
+        .orElseThrow(() ->
+                new ResourceNotFoundException(
+                        "Post not found with id: 1"
+                )
+        );
+```
+
+The post may have many comments.
+
+Hibernate must decide whether to retrieve:
+
+```text
+Only the Post
+```
+
+or:
+
+```text
+Post
++
+All related Comments
+```
+
+Loading unnecessary related data can increase:
+
+- Database work
+- Memory usage
+- Response time
+- Number of generated SQL queries
+
+Fetch types allow us to control when related data is retrieved.
+
+---
+
+## `FetchType.LAZY`
+
+### Definition
+
+Lazy loading means a related entity or collection is loaded only when it is accessed.
+
+Mental model:
+
+```text
+Load it later when it is needed.
+```
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        fetch = FetchType.LAZY
+)
+private List<Comment> comments;
+```
+
+When Hibernate loads a post:
+
+```java
+Post post = postRepository.findById(1L)
+        .orElseThrow();
+```
+
+it initially loads the `Post`.
+
+The comments are accessed later using:
+
+```java
+List<Comment> comments =
+        post.getComments();
+```
+
+Hibernate can then load the comments when the collection is accessed.
+
+---
+
+## Lazy Loading Flow
+
+```text
+Load Post
+    ↓
+Post data is retrieved
+    ↓
+Comments are not needed yet
+    ↓
+Application calls post.getComments()
+    ↓
+Hibernate loads the Comments
+```
+
+---
+
+## Lazy Loading Example
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        fetch = FetchType.LAZY
+)
+private List<Comment> comments;
+```
+
+Service code:
+
+```java
+Post post = postRepository.findById(1L)
+        .orElseThrow();
+
+String title = post.getTitle();
+```
+
+The code only needs:
+
+```text
+Post title
+```
+
+Therefore, loading every comment may be unnecessary.
+
+Later:
+
+```java
+List<Comment> comments =
+        post.getComments();
+```
+
+At that point, the related comments are needed.
+
+---
+
+## `FetchType.EAGER`
+
+### Definition
+
+Eager loading means a related entity or collection is loaded immediately with the main entity.
+
+Mental model:
+
+```text
+Load the related data now,
+even if it may not be used.
+```
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        fetch = FetchType.EAGER
+)
+private List<Comment> comments;
+```
+
+When Hibernate loads the post:
+
+```java
+Post post = postRepository.findById(1L)
+        .orElseThrow();
+```
+
+Hibernate also loads the associated comments as part of fulfilling that request.
+
+---
+
+## Eager Loading Flow
+
+```text
+Load Post
+    ↓
+Load related Comments immediately
+    ↓
+Return Post with its Comments available
+```
+
+Even if the application only uses:
+
+```java
+post.getTitle();
+```
+
+the comments may already have been loaded.
+
+---
+
+## Lazy vs Eager Comparison
+
+| Fetch type | Meaning |
+|---|---|
+| `LAZY` | Load related data only when it is accessed |
+| `EAGER` | Load related data immediately with the main entity |
+
+---
+
+## Simple Analogy
+
+### Lazy Loading
+
+```text
+Order a burger
+    ↓
+Receive the burger
+
+Need fries?
+    ↓
+Request them later
+```
+
+### Eager Loading
+
+```text
+Order a burger
+    ↓
+Receive the burger, fries, drink, and dessert immediately
+```
+
+Lazy loading avoids retrieving additional data until it is needed.
+
+---
+
+## Default Fetch Types
+
+JPA provides default fetch types for relationship annotations.
+
+### To-Many Relationships
+
+The defaults are lazy:
+
+```java
+@OneToMany
+```
+
+```java
+@ManyToMany
+```
+
+Default:
+
+```java
+FetchType.LAZY
+```
+
+---
+
+### To-One Relationships
+
+The defaults are eager:
+
+```java
+@ManyToOne
+```
+
+```java
+@OneToOne
+```
+
+Default:
+
+```java
+FetchType.EAGER
+```
+
+---
+
+## Default Fetch Type Summary
+
+| JPA relationship | Default fetch type |
+|---|---|
+| `@OneToMany` | `LAZY` |
+| `@ManyToMany` | `LAZY` |
+| `@ManyToOne` | `EAGER` |
+| `@OneToOne` | `EAGER` |
+
+### Memory Rule
+
+```text
+To-Many
+    ↓
+Usually LAZY by default
+
+To-One
+    ↓
+Usually EAGER by default
+```
+
+---
+
+## Fetch Types in MiniBlog
+
+### `Post` Entity
+
+```java
+@OneToMany(mappedBy = "post")
+private List<Comment> comments;
+```
+
+Because `@OneToMany` is lazy by default, this is effectively similar to:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        fetch = FetchType.LAZY
+)
+private List<Comment> comments;
+```
+
+Meaning:
+
+```text
+Loading a Post does not require
+loading all Comments immediately.
+```
+
+---
+
+### `Comment` Entity
+
+```java
+@ManyToOne
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+Because `@ManyToOne` is eager by default, this is effectively similar to:
+
+```java
+@ManyToOne(fetch = FetchType.EAGER)
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+Meaning:
+
+```text
+Loading a Comment also loads
+its associated Post by default.
+```
+
+---
+
+## Recommended Explicit Configuration
+
+For many REST API projects, developers explicitly use lazy loading for both sides:
+
+### `Post.java`
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        fetch = FetchType.LAZY
+)
+private List<Comment> comments;
+```
+
+### `Comment.java`
+
+```java
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+This makes the behaviour clear and avoids loading related data automatically when it is not needed.
+
+> Lazy loading is a common preference, but the correct choice depends on how the application accesses its data.
+
+---
+
+## What Happens in the Database?
+
+Suppose the database contains:
+
+```text
+posts
+---------------------------
+id | title
+---------------------------
+1  | Spring Boot Guide
+```
+
+and:
+
+```text
+comments
+---------------------------------------
+id | message          | post_id
+---------------------------------------
+1  | Great article    | 1
+2  | Very helpful     | 1
+3  | Thanks           | 1
+```
+
+With lazy loading, Hibernate can first load the post:
+
+```sql
+SELECT *
+FROM posts
+WHERE id = 1;
+```
+
+When the comments are later accessed, Hibernate may issue another query similar to:
+
+```sql
+SELECT *
+FROM comments
+WHERE post_id = 1;
+```
+
+This demonstrates that related data can be loaded separately when needed.
+
+---
+
+## Lazy Loading and the Hibernate Session
+
+Lazy loading requires Hibernate to still have access to an active persistence context when it tries to load the related data.
+
+For example:
+
+```java
+Post post = postRepository.findById(1L)
+        .orElseThrow();
+
+List<Comment> comments =
+        post.getComments();
+```
+
+If the persistence context has already closed before `getComments()` is accessed, Hibernate may not be able to load the comments.
+
+This can result in:
+
+```text
+LazyInitializationException
+```
+
+---
+
+## What Is `LazyInitializationException`?
+
+### Definition
+
+`LazyInitializationException` can occur when the application tries to access a lazy relationship after the Hibernate session or persistence context has closed.
+
+Mental flow:
+
+```text
+Load Post
+    ↓
+Do not load Comments yet
+    ↓
+Hibernate session closes
+    ↓
+Application calls post.getComments()
+    ↓
+Hibernate cannot load Comments
+    ↓
+LazyInitializationException
+```
+
+This is one reason DTO conversion is commonly performed inside the service layer while the required data is available.
+
+---
+
+## Fetch Type Does Not Define Relationship Ownership
+
+Fetch type and relationship ownership are separate concepts.
+
+### Fetch Type
+
+Controls:
+
+```text
+When should related data be loaded?
+```
+
+Example:
+
+```java
+fetch = FetchType.LAZY
+```
+
+### Relationship Ownership
+
+Controls:
+
+```text
+Which entity manages the foreign key?
+```
+
+Example:
+
+```java
+@ManyToOne
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+The `Comment` entity owns the relationship because the `comments` table contains `post_id`.
+
+---
+
+## Fetch Type Does Not Mean Cascade
+
+Fetch type and cascade type also solve different problems.
+
+### Fetch Type
+
+```java
+fetch = FetchType.LAZY
+
+---
+
+## Lesson 15 (Week 2) — JPA Cascade Types
+
+### Definition
+
+A cascade tells JPA and Hibernate whether an operation performed on one entity should automatically be applied to its related entities.
+
+In the MiniBlog relationship:
+
+```text
+Post
+ ├── Comment 1
+ ├── Comment 2
+ └── Comment 3
+```
+
+`Post` is treated as the parent side, and its related `Comment` objects are treated as children.
+
+A cascade answers questions such as:
+
+```text
+If I save a Post, should its new Comments also be saved?
+
+If I update a Post, should related Comments also be updated?
+
+If I delete a Post, should its Comments also be deleted?
+```
+
+---
+
+## Why Cascade Types Are Needed
+
+Suppose a `Post` object contains two new comments:
+
+```java
+Post post = new Post();
+
+Comment firstComment = new Comment();
+Comment secondComment = new Comment();
+
+post.setComments(
+        List.of(firstComment, secondComment)
+);
+```
+
+Without an appropriate cascade, saving the post does not necessarily save the new comments automatically:
+
+```java
+postRepository.save(post);
+```
+
+The comments may need to be saved separately.
+
+With an appropriate cascade, Hibernate can propagate the operation from the `Post` to its related `Comment` objects.
+
+---
+
+## Where Cascade Is Configured
+
+Cascade configuration is added to the relationship annotation.
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.ALL
+)
+private List<Comment> comments;
+```
+
+In this code:
+
+```java
+mappedBy = "post"
+```
+
+means the relationship is owned by the `post` field in the `Comment` entity.
+
+```java
+cascade = CascadeType.ALL
+```
+
+means all supported entity operations performed on the `Post` should also be propagated to its related comments.
+
+---
+
+## `CascadeType.PERSIST`
+
+### Definition
+
+`CascadeType.PERSIST` propagates a persist or save operation from the parent entity to its new child entities.
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.PERSIST
+)
+private List<Comment> comments;
+```
+
+Mental model:
+
+```text
+Save Post
+    ↓
+Automatically save its new Comments
+```
+
+Example operation:
+
+```java
+postRepository.save(post);
+```
+
+With `CascadeType.PERSIST`, Hibernate can save:
+
+```text
+Post
+Comment 1
+Comment 2
+```
+
+Without this cascade, the new comments may need to be saved separately.
+
+---
+
+## `CascadeType.MERGE`
+
+### Definition
+
+`CascadeType.MERGE` propagates a merge or update operation from the parent entity to its related child entities.
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.MERGE
+)
+private List<Comment> comments;
+```
+
+Mental model:
+
+```text
+Update or merge Post
+        ↓
+Also merge related Comments
+```
+
+---
+
+## `CascadeType.REMOVE`
+
+### Definition
+
+`CascadeType.REMOVE` propagates a delete operation from the parent entity to its child entities.
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.REMOVE
+)
+private List<Comment> comments;
+```
+
+Mental model:
+
+```text
+Delete Post
+    ↓
+Automatically delete its Comments
+```
+
+Suppose the database contains:
+
+```text
+Post 1
+ ├── Comment 1
+ ├── Comment 2
+ └── Comment 3
+```
+
+When this runs:
+
+```java
+postRepository.delete(post);
+```
+
+Hibernate can delete the comments before deleting the post.
+
+This prevents comments from continuing to reference a post that no longer exists.
+
+---
+
+## `CascadeType.REFRESH`
+
+### Definition
+
+`CascadeType.REFRESH` propagates a refresh operation from the parent to its related entities.
+
+A refresh reloads the latest entity state from the database.
+
+Mental model:
+
+```text
+Refresh Post from database
+        ↓
+Also refresh related Comments
+```
+
+This cascade is less commonly used directly in basic Spring Boot CRUD applications.
+
+---
+
+## `CascadeType.DETACH`
+
+### Definition
+
+`CascadeType.DETACH` propagates a detach operation from the parent entity to its child entities.
+
+A detached entity is no longer managed by the current persistence context.
+
+Mental model:
+
+```text
+Detach Post from Hibernate's management
+        ↓
+Also detach related Comments
+```
+
+This is an advanced persistence-context operation and is not currently required for the MiniBlog implementation.
+
+---
+
+## `CascadeType.ALL`
+
+### Definition
+
+`CascadeType.ALL` includes all available cascade operations:
+
+```text
+PERSIST
+MERGE
+REMOVE
+REFRESH
+DETACH
+```
+
+Example:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.ALL
+)
+private List<Comment> comments;
+```
+
+Mental model:
+
+```text
+Perform an entity operation on Post
+        ↓
+Propagate the corresponding operation
+to its related Comments
+```
+
+For example:
+
+```text
+Save Post
+    ↓
+Save Comments
+
+Update or merge Post
+    ↓
+Merge Comments
+
+Delete Post
+    ↓
+Delete Comments
+```
+
+---
+
+## Cascade Types Summary
+
+| Cascade type | Meaning |
+|---|---|
+| `PERSIST` | Saving the parent also saves new children |
+| `MERGE` | Merging the parent also merges children |
+| `REMOVE` | Deleting the parent also deletes children |
+| `REFRESH` | Refreshing the parent also refreshes children |
+| `DETACH` | Detaching the parent also detaches children |
+| `ALL` | Applies all cascade operations |
+
+---
+
+## MiniBlog Relationship Without Cascade
+
+```java
+@OneToMany(mappedBy = "post")
+private List<Comment> comments;
+```
+
+This defines the relationship, but it does not tell Hibernate to propagate every parent operation to the comments.
+
+The relationship and the cascade are separate concepts:
+
+```text
+@OneToMany
+    ↓
+Defines the relationship
+
+cascade
+    ↓
+Defines which operations should propagate
+```
+
+---
+
+## MiniBlog Relationship With Cascade
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.ALL
+)
+private List<Comment> comments;
+```
+
+Read it in plain English:
+
+```text
+One Post can have many Comments.
+
+The Comment entity owns the database relationship
+through its post field.
+
+All supported entity operations performed on the Post
+should also be propagated to its related Comments.
+```
+
+---
+
+## Complete `Post` Relationship Field
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        fetch = FetchType.LAZY,
+        cascade = CascadeType.ALL
+)
+private List<Comment> comments;
+```
+
+### Explanation
+
+```java
+@OneToMany
+```
+
+One post can have multiple comments.
+
+```java
+mappedBy = "post"
+```
+
+The relationship is owned by the field named `post` inside the `Comment` entity.
+
+```java
+fetch = FetchType.LAZY
+```
+
+Comments are not loaded until they are needed.
+
+```java
+cascade = CascadeType.ALL
+```
+
+Supported persistence operations performed on the post are propagated to its comments.
+
+---
+
+## Corresponding `Comment` Relationship Field
+
+```java
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+### Explanation
+
+```java
+@ManyToOne
+```
+
+Many comments can belong to one post.
+
+```java
+fetch = FetchType.LAZY
+```
+
+The associated post is loaded only when needed.
+
+```java
+@JoinColumn(name = "post_id")
+```
+
+The `comments` table contains a foreign-key column named `post_id`.
+
+```java
+private Post post;
+```
+
+In Java, the comment holds a reference to a `Post` object.
+
+In the database, Hibernate stores the relationship using the numeric `post_id` foreign key.
+
+---
+
+## Complete Relationship Flow
+
+```text
+Post Java object
+        ↓
+Contains List<Comment>
+        ↓
+@OneToMany defines the relationship
+        ↓
+cascade defines which operations propagate
+        ↓
+Hibernate generates the required SQL
+        ↓
+PostgreSQL stores posts and comments
+        ↓
+comments.post_id references posts.id
+```
+
+---
+
+## Cascade Does Not Define Ownership
+
+Cascade and relationship ownership are different concepts.
+
+### Ownership
+
+The owning side is determined by the location of the foreign key.
+
+In MiniBlog:
+
+```java
+@ManyToOne
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+The `Comment` entity owns the relationship because the `comments` table contains `post_id`.
+
+### Cascade
+
+Cascade determines which entity operations should propagate from one object to related objects.
+
+Therefore:
+
+```text
+@JoinColumn
+    ↓
+Helps define the database relationship and owning side
+
+cascade
+    ↓
+Controls operation propagation
+```
+
+---
+
+## Cascade Does Not Mean Fetching
+
+Cascade and fetching are also different concepts.
+
+### Fetching
+
+```java
+fetch = FetchType.LAZY
+```
+
+controls:
+
+```text
+When should related data be loaded?
+```
+
+### Cascading
+
+```java
+cascade = CascadeType.ALL
+```
+
+controls:
+
+```text
+Which operations should be propagated?
+```
+
+Mental comparison:
+
+```text
+FetchType
+    ↓
+When to load related objects
+
+CascadeType
+    ↓
+Which operations to propagate
+```
+
+---
+
+## Important Warning
+
+`CascadeType.ALL` should not be added automatically to every relationship.
+
+For example, applying delete cascading carelessly can cause related records to be deleted unintentionally.
+
+Before adding a cascade, ask:
+
+```text
+Does the child belong exclusively to this parent?
+
+Should the child be saved with the parent?
+
+Should the child be deleted when the parent is deleted?
+```
+
+For a `Post` and its `Comment` objects, delete cascading may make sense if comments should not exist without their post.
+
+However, cascade behavior should always be selected according to the application's business requirements.
+
+---
+
+## Do We Need to Implement Cascade Now?
+
+For the current MiniBlog learning goal, understanding cascade behavior is mandatory.
+
+Adding this code is optional until Comment creation and deletion are implemented:
+
+```java
+cascade = CascadeType.ALL
+```
+
+The current purpose of the `Comment` entity is to practise and verify:
+
+```text
+@OneToMany
+@ManyToOne
+@JoinColumn
+mappedBy
+Foreign keys
+Owning side
+Fetch types
+Cascade types
+```
+
+A complete Comment feature would require:
+
+```text
+CommentRepository
+CommentService
+CommentController
+CommentRequest DTO
+CommentResponse DTO
+Validation
+Exception handling
+Comment API endpoints
+```
+
+That feature is not currently required for the core MiniBlog roadmap.
+
+---
+
+## Interview Questions
+
+### Q: What is a cascade in JPA?
+
+A cascade allows an entity operation performed on one entity to propagate automatically to its related entities.
+
+---
+
+### Q: What does `CascadeType.PERSIST` do?
+
+It propagates a persist operation from the parent entity to its new child entities.
+
+For example, saving a new post can also save its new comments.
+
+---
+
+### Q: What does `CascadeType.MERGE` do?
+
+It propagates a merge operation from the parent entity to its related child entities.
+
+---
+
+### Q: What does `CascadeType.REMOVE` do?
+
+It propagates a delete operation from the parent entity to its child entities.
+
+For example, deleting a post can also delete its comments.
+
+---
+
+### Q: What does `CascadeType.ALL` contain?
+
+It contains:
+
+```text
+PERSIST
+MERGE
+REMOVE
+REFRESH
+DETACH
+```
+
+---
+
+### Q: Is cascade the same as fetch type?
+
+No.
+
+```text
+FetchType controls when related data is loaded.
+
+CascadeType controls which entity operations
+are propagated to related entities.
+```
+
+---
+
+### Q: Does cascade define the owning side?
+
+No.
+
+The owning side is the entity whose table contains the foreign key.
+
+Cascade only controls the propagation of entity operations.
+
+---
+
+### Q: Should `CascadeType.ALL` always be used?
+
+No.
+
+It should be used only when all cascade operations match the business rules of the relationship.
+
+Careless use of `CascadeType.REMOVE` or `CascadeType.ALL` can cause unintended data deletion.
+
+---
+
+### Q: Where is cascade commonly configured in a Post and Comment relationship?
+
+It is commonly configured on the parent collection:
+
+```java
+@OneToMany(
+        mappedBy = "post",
+        cascade = CascadeType.ALL
+)
+private List<Comment> comments;
+```
+
+This allows operations on the parent `Post` to propagate to related `Comment` objects.
+
+---
+
+## Key Concepts Learned
+
+- A cascade propagates entity operations across a relationship.
+- `CascadeType.PERSIST` propagates save operations.
+- `CascadeType.MERGE` propagates merge operations.
+- `CascadeType.REMOVE` propagates delete operations.
+- `CascadeType.REFRESH` propagates refresh operations.
+- `CascadeType.DETACH` propagates detach operations.
+- `CascadeType.ALL` includes all cascade operations.
+- Cascade is different from relationship ownership.
+- Cascade is different from lazy or eager loading.
+- Cascade behavior should match the application's business rules.
+- `CascadeType.ALL` should not be used automatically on every relationship.
+
+---
+
+## Progress Update
+
+```text
+Primary Key vs Foreign Key             ✅ Done
+@OneToMany                              ✅ Done
+@ManyToOne                              ✅ Done
+@JoinColumn                             ✅ Done
+Owning Side vs Inverse Side             ✅ Done
+mappedBy                                ✅ Done
+Unidirectional Relationships            ✅ Done
+Bidirectional Relationships             ✅ Done
+Lazy vs Eager Loading                   ✅ Done
+Cascade Types                           ✅ Done
+orphanRemoval                           ⬜ Next
+```
+
+
+
 ## 16. Progress Tracker
 
 | Week | Topic | Status |
@@ -3332,10 +4601,18 @@ and the foreign key relationship automatically.
 | 2 | Pagination | ✅ Done |
 | 2 | Basic Sorting | ✅ Done (`Sort.by("title")`) |
 | 2 | Dynamic Sorting | ⬜ Optional improvement |
-| 2 | PostgreSQL + JPA Relationships | ⬜ Next |
-| 3 | Spring Security + JWT | ⬜ |
+| 2 | JPA Relationships (`@OneToMany`, `@ManyToOne`, `@JoinColumn`) | ✅ Done |
+| 2 | Relationship Ownership (`mappedBy`, Foreign Keys) | ✅ Done |
+| 2 | Unidirectional vs Bidirectional Relationships | ✅ Done |
+| 2 | Lazy vs Eager Loading | ✅ Done |
+| 2 | Cascade Types | ✅ Done |
+| 2 | orphanRemoval | ⬜ Optional / Later |
+| 3 | Spring Security Fundamentals | ⬜ Next |
+| 3 | Authentication vs Authorization | ⬜ |
+| 3 | Basic Authentication | ⬜ |
+| 3 | JWT Fundamentals | ⬜ |
+| 3 | JWT Implementation | ⬜ |
 | 4 | Docker + Deployment | ⬜ |
-
 
 ---
 
