@@ -3135,22 +3135,188 @@ Mental model:
 Pageable = request instructions
 
 Page = database result plus metadata
+
+```
+---
+
+## Lesson 13 (Week 2) — JPA Relationships
+
+### Definitions
+
+#### Primary Key
+
+A primary key uniquely identifies a row in a table.
+
+Example:
+
+```text
+posts.id
 ```
 
 ---
 
-## Updated Week 2 Status
+#### Foreign Key
+
+A foreign key stores the primary key value of another table in order to create a relationship.
+
+Example:
 
 ```text
-DTOs                    ✅ Done
-Validation              ✅ Done
-Exception Handling      ✅ Done
-Optional Fundamentals   ✅ Done
-Pagination              ✅ Done
-Basic Sorting           ✅ Done
-Dynamic Sorting         ⬜ Optional
-JPA Relationships       ⬜ Next
+comments.post_id
 ```
+
+stores:
+
+```text
+posts.id
+```
+
+---
+
+#### One-To-Many
+
+One record can be associated with many records.
+
+Example:
+
+```text
+One Post
+→ Many Comments
+```
+
+Java:
+
+```java
+@OneToMany(mappedBy = "post")
+private List<Comment> comments;
+```
+
+---
+
+#### Many-To-One
+
+Many records can be associated with one record.
+
+Example:
+
+```text
+Many Comments
+→ One Post
+```
+
+Java:
+
+```java
+@ManyToOne
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+---
+
+#### Relationship Owner
+
+The entity containing the foreign key owns the relationship.
+
+Example:
+
+```java
+@ManyToOne
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+The Comment entity owns the relationship because it contains:
+
+```text
+post_id
+```
+
+---
+
+#### mappedBy
+
+```java
+@OneToMany(mappedBy = "post")
+```
+
+means:
+
+```text
+The relationship is already mapped
+by the field named "post"
+inside the Comment entity.
+```
+
+---
+
+### Unidirectional Relationship
+
+```java
+@OneToMany
+@JoinColumn(name = "post_id")
+private List<Comment> comments;
+```
+
+Navigation:
+
+```text
+Post → Comments
+```
+
+Only one direction.
+
+---
+
+### Bidirectional Relationship
+
+```java
+@ManyToOne
+@JoinColumn(name = "post_id")
+private Post post;
+```
+
+and
+
+```java
+@OneToMany(mappedBy = "post")
+private List<Comment> comments;
+```
+
+Navigation:
+
+```text
+Post → Comments
+
+Comment → Post
+```
+
+Both directions.
+
+---
+
+### Hibernate and Relationships
+
+JPA annotations:
+
+```java
+@OneToMany
+@ManyToOne
+@JoinColumn
+```
+
+describe the relationship.
+
+Hibernate reads the annotations and creates:
+
+```sql
+post_id
+```
+
+and the foreign key relationship automatically.
+
+---
+
 ## 16. Progress Tracker
 
 | Week | Topic | Status |
