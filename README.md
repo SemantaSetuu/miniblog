@@ -4584,7 +4584,1329 @@ Cascade Types                           ✅ Done
 orphanRemoval                           ⬜ Next
 ```
 
+---
+## Lesson 16 (Week 3) — Spring Security Fundamentals
 
+### What Is Spring Security?
+
+Spring Security is a framework used to protect Spring applications.
+
+It provides:
+
+```text
+Authentication
+Authorization
+Protection of application endpoints
+```
+
+After Spring Security is added, incoming requests pass through the Spring Security Filter Chain before reaching the controller.
+
+---
+
+## Authentication
+
+### Definition
+
+Authentication verifies the identity of a user.
+
+It answers:
+
+```text
+Who are you?
+```
+
+Examples of authentication credentials include:
+
+```text
+Username and password
+JWT token
+OAuth login
+```
+
+For the current MiniBlog stage, authentication uses:
+
+```text
+Username + Password
+```
+
+---
+
+## Authorization
+
+### Definition
+
+Authorization determines what an authenticated user is allowed to do.
+
+It answers:
+
+```text
+What are you allowed to access or perform?
+```
+
+Example:
+
+```text
+Normal User
+    ↓
+Can read posts
+
+Administrator
+    ↓
+Can create, update, and delete posts
+```
+
+---
+
+## Authentication vs Authorization
+
+| Authentication | Authorization |
+|---|---|
+| Verifies identity | Verifies permission |
+| Answers “Who are you?” | Answers “What can you do?” |
+| Happens first | Happens after authentication |
+| Uses credentials | Uses roles and permissions |
+
+### Memory Rule
+
+```text
+Authentication = Identity
+
+Authorization = Permission
+```
+
+---
+
+## Lesson 17 (Week 3) — Installing Spring Security
+
+### Dependency Added
+
+The following dependency was added to `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+```
+
+---
+
+## Running the Application in GitHub Codespaces
+
+The application was started from the Codespaces terminal:
+
+```bash
+mvn spring-boot:run
+```
+
+After adding Spring Security, the startup log displayed:
+
+```text
+Using generated security password: ...
+```
+
+Spring Boot automatically created a temporary user:
+
+```text
+Username: user
+
+Password: generated during application startup
+```
+
+> The generated password is intended only for development. It changes when the application restarts and should not be committed to GitHub.
+
+---
+
+## Behaviour Before Spring Security
+
+Before adding Spring Security:
+
+```bash
+curl -i http://localhost:8080/api/posts
+```
+
+returned:
+
+```http
+HTTP/1.1 200 OK
+```
+
+The endpoint was public.
+
+---
+
+## Behaviour After Spring Security
+
+After adding the dependency, the same request without credentials returned:
+
+```http
+HTTP/1.1 401 Unauthorized
+```
+
+Spring Security secured the application automatically.
+
+---
+
+## Security Filter Chain
+
+Before Spring Security:
+
+```text
+Client Request
+      ↓
+DispatcherServlet
+      ↓
+Controller
+      ↓
+Service
+      ↓
+Repository
+      ↓
+Database
+```
+
+After Spring Security:
+
+```text
+Client Request
+      ↓
+Spring Security Filter Chain
+      ↓
+DispatcherServlet
+      ↓
+Controller
+      ↓
+Service
+      ↓
+Repository
+      ↓
+Database
+```
+
+The request reaches the controller only if the security rules allow it.
+
+---
+
+## Important Startup Flow
+
+The security configuration is created when the application starts:
+
+```text
+Spring Boot starts
+      ↓
+Finds SecurityConfig
+      ↓
+Executes the @Bean method
+      ↓
+Builds SecurityFilterChain
+      ↓
+Stores the SecurityFilterChain bean
+```
+
+The `SecurityConfig` method is not executed again for every request.
+
+For every request, the already-created `SecurityFilterChain` applies the configured rules.
+
+---
+
+## Lesson 18 (Week 3) — Basic Authentication
+
+### Definition
+
+Basic Authentication is an authentication mechanism where a username and password are sent with the request.
+
+Example:
+
+```bash
+curl -u user:YOUR_GENERATED_PASSWORD http://localhost:8080/api/posts
+```
+
+The `-u` option means:
+
+```text
+Send username and password
+using Basic Authentication.
+```
+
+---
+
+## Basic Authentication Flow
+
+```text
+Client sends request
+      ↓
+Request contains username and password
+      ↓
+Spring Security Filter Chain
+      ↓
+Credentials checked
+      ↓
+Valid credentials?
+   ↙              ↘
+ Yes              No
+  ↓                ↓
+Controller      401 Unauthorized
+```
+
+---
+
+## Successful Authentication Test
+
+A request with valid credentials returned:
+
+```http
+HTTP/1.1 200 OK
+```
+
+and the paginated posts JSON.
+
+This proved that:
+
+```text
+Spring Security received the credentials
+      ↓
+The credentials were valid
+      ↓
+Authentication succeeded
+      ↓
+The request reached PostController
+      ↓
+The posts were returned
+```
+
+---
+
+## Important HTTP Security Status Codes
+
+### `401 Unauthorized`
+
+Meaning:
+
+```text
+The user has not been successfully authenticated.
+```
+
+Common reasons:
+
+```text
+No credentials supplied
+Incorrect username
+Incorrect password
+Invalid or expired authentication token
+```
+
+---
+
+### `403 Forbidden`
+
+Meaning:
+
+```text
+The user is authenticated,
+but does not have permission
+to access the requested resource.
+```
+
+Memory rule:
+
+```text
+401 = I do not know who you are
+
+403 = I know who you are,
+      but you cannot perform this action
+```
+
+---
+
+## Lesson 19 (Week 3) — Custom Security Configuration
+
+### `SecurityConfig.java`
+
+```java
+package com.learning.miniblog.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http
+    ) throws Exception {
+
+        http.authorizeHttpRequests(auth ->
+                auth.requestMatchers("/api/posts")
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated()
+        );
+
+        http.httpBasic(Customizer.withDefaults());
+
+        return http.build();
+    }
+}
+```
+
+> `Customizer.withDefaults()` enables Basic Authentication using Spring Security’s default configuration.
+
+---
+
+## `@Configuration`
+
+### Definition
+
+`@Configuration` tells Spring that the class contains application configuration and bean definitions.
+
+```java
+@Configuration
+public class SecurityConfig {
+}
+```
+
+Spring detects the class during application startup and manages it.
+
+Mental model:
+
+```java
+SecurityConfig config =
+        new SecurityConfig();
+```
+
+Spring performs the real object creation internally.
+
+---
+
+## `@Bean`
+
+### Definition
+
+`@Bean` is a method-level annotation.
+
+It tells Spring:
+
+```text
+Call this method
+      ↓
+Take the returned object
+      ↓
+Register it in the Spring container
+      ↓
+Manage it as a Spring bean
+```
+
+Example:
+
+```java
+@Bean
+public SecurityFilterChain securityFilterChain(
+        HttpSecurity http
+) throws Exception {
+    return http.build();
+}
+```
+
+The object returned from the method is:
+
+```java
+SecurityFilterChain
+```
+
+Spring stores and manages that object.
+
+---
+
+## `@Configuration` vs `@Bean`
+
+```text
+@Configuration
+      ↓
+Marks a class containing configuration
+
+@Bean
+      ↓
+Registers the object returned by a method
+```
+
+### Comparison With `@Service`
+
+```java
+@Service
+public class PostService {
+}
+```
+
+Spring creates the `PostService` object automatically because the class is directly annotated.
+
+With `@Bean`:
+
+```java
+@Bean
+public SecurityFilterChain securityFilterChain(...) {
+    return http.build();
+}
+```
+
+Spring registers the object returned from the method.
+
+---
+
+## `SecurityFilterChain`
+
+### Definition
+
+`SecurityFilterChain` represents the final collection of security filters and rules that Spring Security applies to matching HTTP requests.
+
+For the current MiniBlog configuration, the important rules are:
+
+```text
+/api/posts
+    ↓
+Public
+
+Every other request
+    ↓
+Authentication required
+
+Authentication mechanism
+    ↓
+HTTP Basic Authentication
+```
+
+---
+
+## `HttpSecurity`
+
+### Definition
+
+`HttpSecurity` is a Spring Security configuration builder.
+
+It is not:
+
+```text
+A URL
+An incoming request
+An HTTP link
+```
+
+It is a Java object provided by Spring so that security rules can be configured.
+
+```java
+HttpSecurity http
+```
+
+means:
+
+```text
+A variable named http
+whose type is HttpSecurity.
+```
+
+Spring creates and supplies the object to the `@Bean` method.
+
+---
+
+## Why Is `HttpSecurity` Passed Into the Method?
+
+The `HttpSecurity` object provides methods used to configure security:
+
+```java
+http.authorizeHttpRequests(...);
+
+http.httpBasic(...);
+
+http.build();
+```
+
+Mental plain-Java version:
+
+```java
+HttpSecurity securityBuilder =
+        springProvidedHttpSecurityObject;
+
+securityBuilder.authorizeHttpRequests(...);
+
+securityBuilder.httpBasic(...);
+
+SecurityFilterChain securityFilterChain =
+        securityBuilder.build();
+
+return securityFilterChain;
+```
+
+> This is a mental model. Spring creates the actual `HttpSecurity` object internally.
+
+---
+
+## `authorizeHttpRequests()`
+
+### Definition
+
+`authorizeHttpRequests()` is used to define authorization rules for incoming HTTP requests.
+
+```java
+http.authorizeHttpRequests(auth -> {
+    // Authorization rules
+});
+```
+
+Read it as:
+
+```text
+Configure which requests are public
+and which requests require authentication.
+```
+
+---
+
+## What Is `auth`?
+
+In:
+
+```java
+auth -> auth.requestMatchers(...)
+```
+
+`auth` is only a lambda parameter name.
+
+It is not:
+
+```text
+The incoming URL
+The HTTP request
+The authenticated user
+```
+
+It is a configuration object supplied by Spring Security.
+
+The programmer could rename it:
+
+```java
+http.authorizeHttpRequests(rules ->
+        rules.requestMatchers("/api/posts")
+                .permitAll()
+                .anyRequest()
+                .authenticated()
+);
+```
+
+Both versions mean the same thing.
+
+### Mental Meaning
+
+```text
+Spring supplies an authorization configuration object
+      ↓
+We name the object auth
+      ↓
+We use it to define authorization rules
+```
+
+For the current learning stage, it is enough to understand:
+
+```text
+auth = authorization rule configuration object
+```
+
+The exact internal generic class names do not need to be memorized.
+
+---
+
+## `requestMatchers()`
+
+### Definition
+
+`requestMatchers()` identifies the URL pattern to which a security rule should apply.
+
+```java
+.requestMatchers("/api/posts")
+```
+
+This matches:
+
+```text
+/api/posts
+```
+
+It does not match:
+
+```text
+/api/posts/4
+/api/posts/10
+```
+
+Therefore:
+
+```java
+.requestMatchers("/api/posts")
+        .permitAll()
+```
+
+makes only the exact `/api/posts` path public.
+
+---
+
+## `permitAll()`
+
+### Definition
+
+`permitAll()` allows the matched request without requiring authentication.
+
+```java
+.requestMatchers("/api/posts")
+        .permitAll()
+```
+
+Meaning:
+
+```text
+Anyone can access /api/posts.
+```
+
+Test:
+
+```bash
+curl -i http://localhost:8080/api/posts
+```
+
+Verified result:
+
+```http
+HTTP/1.1 200 OK
+```
+
+No username or password was required.
+
+---
+
+## `anyRequest()`
+
+### Definition
+
+`anyRequest()` matches every request that was not matched by an earlier rule.
+
+```java
+.anyRequest()
+        .authenticated()
+```
+
+Because the `/api/posts` rule appears first, it remains public.
+
+Other paths fall through to:
+
+```java
+anyRequest()
+```
+
+---
+
+## `authenticated()`
+
+### Definition
+
+`authenticated()` requires the user to be successfully authenticated.
+
+```java
+.anyRequest()
+        .authenticated()
+```
+
+Meaning:
+
+```text
+Every request not matched earlier
+requires authentication.
+```
+
+Example:
+
+```text
+/api/posts/4
+```
+
+does not exactly match:
+
+```text
+/api/posts
+```
+
+Therefore it requires authentication.
+
+---
+
+## `httpBasic()`
+
+### Definition
+
+`httpBasic()` enables HTTP Basic Authentication.
+
+It answers:
+
+```text
+How should the user authenticate?
+```
+
+Basic Authentication uses:
+
+```text
+Username + Password
+```
+
+Comparison:
+
+```text
+authenticated()
+      ↓
+Who is allowed?
+Only authenticated users
+
+httpBasic()
+      ↓
+How can they authenticate?
+Using HTTP Basic username and password
+```
+
+---
+
+## What Happens Without `httpBasic()`?
+
+This rule:
+
+```java
+.anyRequest()
+        .authenticated()
+```
+
+still says that protected requests require an authenticated user.
+
+However, without enabling an authentication mechanism such as HTTP Basic, the current cURL request using:
+
+```bash
+curl -u user:password ...
+```
+
+would not be handled through the HTTP Basic mechanism configured by this security chain.
+
+For the current MiniBlog learning configuration:
+
+```java
+http.httpBasic(Customizer.withDefaults());
+```
+
+enables the username and password mechanism that was tested successfully.
+
+---
+
+## `http.build()`
+
+### Definition
+
+`http.build()` creates and returns the final `SecurityFilterChain` from the rules configured through `HttpSecurity`.
+
+It follows the Builder Pattern.
+
+### `Post` Builder Comparison
+
+```java
+Post post = Post.builder()
+        .title("Spring Security")
+        .author("Semanta")
+        .build();
+```
+
+The builder temporarily stores the post data and then creates the final `Post`.
+
+### Security Builder
+
+```java
+http.authorizeHttpRequests(...);
+
+http.httpBasic(...);
+
+SecurityFilterChain chain =
+        http.build();
+```
+
+The `HttpSecurity` builder collects security configuration and then creates the final `SecurityFilterChain`.
+
+Mental model:
+
+```text
+HttpSecurity
+      ↓
+Temporary security configuration builder
+
+authorizeHttpRequests()
+      ↓
+Add authorization rules
+
+httpBasic()
+      ↓
+Enable Basic Authentication
+
+build()
+      ↓
+Create final SecurityFilterChain
+```
+
+`SecurityFilterChain` is not a normal DTO containing fields such as `title` and `author`. It is a framework object used internally by Spring Security to process requests.
+
+---
+
+## Why Does the Method Use `throws Exception`?
+
+```java
+public SecurityFilterChain securityFilterChain(
+        HttpSecurity http
+) throws Exception {
+```
+
+The configuration and build methods may declare checked exceptions.
+
+Java therefore requires the method to:
+
+```text
+Handle the exception with try-catch
+```
+
+or:
+
+```text
+Declare throws Exception
+```
+
+The standard configuration uses:
+
+```java
+throws Exception
+```
+
+This is related to building the security configuration during application startup.
+
+It is not used for:
+
+```text
+Post not found
+401 Unauthorized
+403 Forbidden
+Validation failures
+```
+
+Those are request-processing situations handled separately.
+
+---
+
+## Security Configuration Startup Flow
+
+```text
+Application starts
+      ↓
+Spring scans SecurityConfig
+      ↓
+Spring finds @Configuration
+      ↓
+Spring finds @Bean method
+      ↓
+Spring supplies HttpSecurity
+      ↓
+Authorization rules are configured
+      ↓
+HTTP Basic Authentication is enabled
+      ↓
+http.build() creates SecurityFilterChain
+      ↓
+Spring stores the SecurityFilterChain bean
+```
+
+---
+
+## Public Request Flow
+
+Request:
+
+```bash
+curl -i http://localhost:8080/api/posts
+```
+
+Flow:
+
+```text
+GET /api/posts
+      ↓
+SecurityFilterChain
+      ↓
+Matches "/api/posts"
+      ↓
+permitAll()
+      ↓
+PostController
+      ↓
+PostService
+      ↓
+PostRepository
+      ↓
+PostgreSQL
+      ↓
+JSON response
+```
+
+Verified result:
+
+```http
+HTTP/1.1 200 OK
+```
+
+---
+
+## Protected Request Flow
+
+Request:
+
+```bash
+curl -i http://localhost:8080/api/posts/4
+```
+
+Flow:
+
+```text
+GET /api/posts/4
+      ↓
+SecurityFilterChain
+      ↓
+Does not exactly match "/api/posts"
+      ↓
+Matches anyRequest()
+      ↓
+authenticated()
+      ↓
+Credentials required
+```
+
+Without valid authentication:
+
+```http
+401 Unauthorized
+```
+
+With valid Basic Authentication:
+
+```bash
+curl -u user:YOUR_GENERATED_PASSWORD \
+     -i http://localhost:8080/api/posts/4
+```
+
+the request may proceed to the controller.
+
+---
+
+## Browser Authentication Behaviour
+
+A browser may remember Basic Authentication credentials for the current site.
+
+After entering the username and password once, the browser may automatically send those credentials with later requests.
+
+Therefore:
+
+```text
+The protected endpoint may appear public
+```
+
+when the browser is actually sending saved authentication credentials.
+
+For reliable security testing, use cURL with:
+
+```bash
+curl -i URL
+```
+
+and:
+
+```bash
+curl -u username:password -i URL
+```
+
+---
+
+## Security Testing Commands
+
+### Public endpoint without credentials
+
+```bash
+curl -i http://localhost:8080/api/posts
+```
+
+Expected:
+
+```http
+HTTP/1.1 200 OK
+```
+
+---
+
+### Protected endpoint without credentials
+
+```bash
+curl -i http://localhost:8080/api/posts/4
+```
+
+Expected:
+
+```http
+HTTP/1.1 401 Unauthorized
+```
+
+---
+
+### Protected endpoint with credentials
+
+```bash
+curl -u user:YOUR_GENERATED_PASSWORD \
+     -i http://localhost:8080/api/posts/4
+```
+
+Expected:
+
+```http
+HTTP/1.1 200 OK
+```
+
+provided the requested post exists.
+
+---
+
+## Plain-English Translation of `SecurityConfig`
+
+```java
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http
+    ) throws Exception {
+
+        http.authorizeHttpRequests(auth ->
+                auth.requestMatchers("/api/posts")
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated()
+        );
+
+        http.httpBasic(Customizer.withDefaults());
+
+        return http.build();
+    }
+}
+```
+
+Plain English:
+
+```text
+This is a Spring configuration class.
+
+Create a SecurityFilterChain bean.
+
+Spring provides an HttpSecurity configuration builder.
+
+Make /api/posts public.
+
+Require authentication for every other request.
+
+Allow protected requests to use HTTP Basic Authentication.
+
+Build and return the final SecurityFilterChain.
+```
+
+---
+
+## Interview Questions
+
+### Q: What is Spring Security?
+
+Spring Security is a framework that provides authentication, authorization, and security protection for Spring applications.
+
+---
+
+### Q: What is authentication?
+
+Authentication verifies the identity of a user.
+
+It answers:
+
+```text
+Who are you?
+```
+
+---
+
+### Q: What is authorization?
+
+Authorization verifies what an authenticated user is allowed to do.
+
+It answers:
+
+```text
+What can you access or perform?
+```
+
+---
+
+### Q: What is `SecurityFilterChain`?
+
+`SecurityFilterChain` represents the security filters and rules applied to matching incoming requests.
+
+---
+
+### Q: What is `HttpSecurity`?
+
+`HttpSecurity` is a Spring Security builder used to configure web security rules and authentication mechanisms.
+
+---
+
+### Q: What does `requestMatchers()` do?
+
+It selects the request path or pattern to which an authorization rule applies.
+
+---
+
+### Q: What does `permitAll()` do?
+
+It allows the matched request without requiring authentication.
+
+---
+
+### Q: What does `authenticated()` do?
+
+It requires the user to be authenticated before the request can continue.
+
+---
+
+### Q: What does `httpBasic()` do?
+
+It enables HTTP Basic Authentication using a username and password.
+
+---
+
+### Q: What does `http.build()` return?
+
+It returns the final configured `SecurityFilterChain`.
+
+---
+
+### Q: Why is `@Bean` used on the method?
+
+`@Bean` tells Spring to register the object returned by the method in the Spring container.
+
+---
+
+### Q: Why is `@Configuration` used on the class?
+
+`@Configuration` tells Spring that the class contains application configuration and bean definitions.
+
+---
+
+### Q: Is `auth` the incoming request?
+
+No.
+
+`auth` is the lambda parameter name for an authorization configuration object supplied by Spring Security.
+
+---
+
+### Q: What is the difference between `401` and `403`?
+
+```text
+401 Unauthorized
+    ↓
+The user is not successfully authenticated.
+
+403 Forbidden
+    ↓
+The user is authenticated
+but does not have permission.
+```
+
+---
+
+## Key Concepts Learned
+
+- Spring Security places a filter chain before the controller.
+- Authentication verifies identity.
+- Authorization verifies permissions.
+- Adding Spring Security secures endpoints by default.
+- Spring Boot creates a temporary development user.
+- Basic Authentication sends a username and password.
+- `@Configuration` marks a configuration class.
+- `@Bean` registers a returned object in the Spring container.
+- `HttpSecurity` is a configuration builder, not a URL.
+- `authorizeHttpRequests()` defines authorization rules.
+- `requestMatchers()` selects request paths.
+- `permitAll()` makes a matched request public.
+- `authenticated()` requires authentication.
+- `httpBasic()` enables Basic Authentication.
+- `http.build()` creates the final `SecurityFilterChain`.
+- The security configuration is built during application startup.
+- The established `SecurityFilterChain` processes later requests.
+- Browsers may remember Basic Authentication credentials.
+
+---
+
+## Week 3 Progress Update
+
+```text
+Spring Security dependency             ✅ Done
+Authentication vs Authorization        ✅ Done
+Default endpoint protection            ✅ Done
+Generated development user             ✅ Done
+Basic Authentication                   ✅ Done
+SecurityFilterChain                    ✅ Done
+@Configuration                         ✅ Done
+@Bean                                  ✅ Done
+HttpSecurity                           ✅ Done
+authorizeHttpRequests()                ✅ Done
+requestMatchers()                      ✅ Done
+permitAll()                            ✅ Done
+authenticated()                        ✅ Done
+httpBasic()                            ✅ Done
+http.build()                           ✅ Done
+Public/protected endpoint testing       ✅ Done
+Password hashing with BCrypt           ⬜ Next
+Custom users                           ⬜
+User registration                      ⬜
+Login endpoint                         ⬜
+JWT fundamentals                       ⬜
+JWT generation and validation          ⬜
+Role-based authorization               ⬜
+```
+
+---
+
+## Updated Progress Tracker
+
+Replace the Week 3 rows in the existing tracker with:
+
+| Week | Topic | Status |
+|---|---|---|
+| 3 | Spring Security Dependency | ✅ Done |
+| 3 | Authentication vs Authorization | ✅ Done |
+| 3 | Default Security Behaviour | ✅ Done |
+| 3 | Basic Authentication | ✅ Done |
+| 3 | `SecurityFilterChain` Configuration | ✅ Done |
+| 3 | Public vs Protected Endpoints | ✅ Done |
+| 3 | BCrypt Password Hashing | ⬜ Next |
+| 3 | Custom User Authentication | ⬜ |
+| 3 | User Registration | ⬜ |
+| 3 | Login Endpoint | ⬜ |
+| 3 | JWT Fundamentals | ⬜ |
+| 3 | JWT Token Generation | ⬜ |
+| 3 | JWT Authentication Filter | ⬜ |
+| 3 | Role-Based Authorization | ⬜ |
+| 3 | Secure POST, PUT, and DELETE | ⬜ |
 
 ## 16. Progress Tracker
 
